@@ -1,0 +1,12 @@
+jax
+jaxlib
+nilearn
+numpy
+pandas
+nibabel
+scipy
+scikit-learn
+matplotlib
+seaborn
+ipykernel
+tqdm
