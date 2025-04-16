@@ -10,3 +10,4 @@ matplotlib
 seaborn
 ipykernel
 tqdm
+statsmodels
