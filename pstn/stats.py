@@ -75,7 +75,20 @@ def aspin_welch_v(Y, X, C, groups, J_max):
     Returns
     -------
     v_vals : array, (p,)
-        v = (Cᵀβ) / √den.
+        v = (Cᵀ β) / √den, where
+          β        = (Xᵀ X)⁻¹ Xᵀ Y,
+          Hᵢᵢ      = diagonal of X (Xᵀ X)⁻¹ Xᵀ,
+          d_b      = ∑₍i∈group_b₎ (1 − Hᵢᵢ),
+          RSS_b    = ∑₍i∈group_b₎ resid_i²,
+          W_b      = d_b / RSS_b,
+          M_b      = ∑₍i∈group_b₎ x_i x_iᵀ,
+          cte      = ∑₍b=1…J₎ M_b · W_b,
+          den      = Cᵀ [pinv(cte)] C,
+          resid    = Y − X β.
+
+    Notes
+    -----
+    0/0 → 0, k/0 → ±∞.
     """
     n, p = Y.shape
     C = jnp.atleast_1d(jnp.squeeze(C))
@@ -118,26 +131,35 @@ def F(Y, X, C):
     Returns
     -------
     F_vals : array, (p,)
-        F = [(Cβ)' (C (XᵀX)⁻¹ Cᵀ)⁻¹ (Cβ) / m] / MSE.
+        F = [(Cβ)' (C (XᵀX)⁻¹ Cᵀ)⁻¹ (Cβ) / m] / MSE, where
+          β    = (XᵀX)⁻¹ Xᵀ Y,
+          df₂  = n − rank(X),
+          MSE  = ∑(resid²)/df₂,
+          m    = rank(C).
 
     Notes
     -----
-    df2 = n − rank(X).
+    0/0 → 0, k/0 → ±∞.
     """
     n, p = Y.shape
     # fit GLM
     XtX_inv = pinv(X.T @ X)
-    beta = XtX_inv @ X.T @ Y
-    # residuals & mse
+    beta = XtX_inv @ (X.T @ Y)
+
+    # residuals & MSE
     resid = Y - X @ beta
     df2 = n - matrix_rank(X)
     mse = jnp.maximum(jnp.sum(resid**2, axis=0) / df2, jnp.finfo(resid.dtype).tiny)
-    # contrast SS
+
+    # contrast DF
+    m = matrix_rank(C)
+
+    # numerator SS
     CB = C @ beta
     CXX = C @ XtX_inv @ C.T
     ss = jnp.maximum(jnp.sum(CB * (pinv(CXX) @ CB), axis=0), 0.0)
+
     # F‐statistic
-    m = C.shape[0]
     F_vals = (ss / m) / mse
     return jnp.nan_to_num(F_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf)
 
@@ -158,46 +180,65 @@ def G(Y, X, C, groups, J_max):
     groups : int array, (n,)
         Group membership.
     J_max : int
-        Max number of groups.
+        Max number of groups (static for jitting).
 
     Returns
     -------
     G_vals : array, (p,)
-        G = [(Cβ)' V⁻¹ (Cβ)/m] / [1 + 2*(m−1)*b].
+        G = [(Cβ)' V⁻¹ (Cβ) / m] / [1 + 2·(m−1)·b], where
+          β      = (XᵀX)⁻¹ Xᵀ Y,
+          V      = C · pinv(cte) · Cᵀ,
+          cte    = ∑₍b=1…J_max₎ Mᵦ · W_int[ᵦ],
+          Mᵦ     = ∑₍i∈groupᵦ₎ xᵢ xᵢᵀ,
+          W_intᵦ = dᵦ / rssᵦ,
+          dᵦ     = ∑₍i∈groupᵦ₎ (1 − hᵢᵢ),
+          rssᵦ   = ∑₍i∈groupᵦ₎ residᵢ²,
+          W_finᵦ = W_intᵦ · countᵦ,
+          sW     = ∑₍ᵦ₎ W_finᵦ,
+          b      = [∑₍ᵦ₎ (1 − W_finᵦ/sW)² / dᵦ] / [m·(m+2)],
+          m      = rank(C).
+
+    Notes
+    -----
+    0/0 → 0, k/0 → ±∞.
     """
     n, p = Y.shape
-    m, k = C.shape
     # fit GLM
     XtX_inv = pinv(X.T @ X)
-    beta = XtX_inv @ X.T @ Y
+    beta = XtX_inv @ (X.T @ Y)
     resid = Y - X @ beta
-    # group leverages
-    _, g = jnp.unique(groups, return_inverse=True, size=J_max, fill_value=-1)
+
+    # group indexing (static J_max)
+    _, g = jnp.unique(groups, return_inverse=True, size=J_max)
+    counts = jnp.bincount(g, length=J_max)
+
+    # leverages
     H_diag = jnp.diag(X @ XtX_inv @ X.T)
     d = jnp.maximum(segment_sum(1 - H_diag, g, num_segments=J_max), 1e-12)
-    counts = jnp.bincount(g, length=J_max)
-    # weights
+
+    # residual sums & weights
     rss = jnp.maximum(segment_sum(resid**2, g, num_segments=J_max), 1e-12)
-    Wint = d[:, None] / rss
-    Wfinal = Wint * counts[:, None]
-    # accumulate weighted X'X
+    W_int = d[:, None] / rss
+    W_fin = W_int * counts[:, None]
+
+    # build cte
     Mb = segment_sum(jnp.einsum("ij,ik->ijk", X, X), g, num_segments=J_max)
-    cte = jnp.sum(Mb.reshape(J_max, -1, 1) * Wint[:, None, :], axis=0)
-    cte_mats = cte.reshape(k, k, -1).transpose(2, 0, 1)
+    cte = jnp.sum(Mb.reshape(J_max, -1, 1) * W_int[:, None, :], axis=0)
+    cte_mats = cte.reshape(X.shape[1], X.shape[1], -1).transpose(2, 0, 1)
 
     # numerator SS
     def quad(b_col, A):
-        cvec = C @ b_col
-        return jnp.maximum(cvec.T @ pinv(C @ pinv(A) @ C.T) @ cvec, 0.0)
+        v = C @ b_col
+        return jnp.maximum(v.T @ pinv(C @ pinv(A) @ C.T) @ v, 0.0)
 
     num_ss = vmap(quad)(beta.T, cte_mats)
-    # b‐sum
-    sW = jnp.sum(Wfinal, axis=0)
-    b = jnp.sum(
-        (1 - Wfinal / sW) ** 2 * jnp.where(d > 1e-12, 1 / d, 0)[:, None], axis=0
-    )
+
+    # Welch correction
+    m = matrix_rank(C)
+    sW = jnp.sum(W_fin, axis=0)
+    b = jnp.sum((1 - W_fin / sW) ** 2 * (1 / d)[:, None], axis=0)
     b = b / (m * (m + 2))
-    # G‐statistic
+
     G_vals = (num_ss / m) / jnp.maximum(1 + 2 * (m - 1) * b, 1e-12)
     return jnp.nan_to_num(G_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf)
 
