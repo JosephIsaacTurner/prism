@@ -2,7 +2,7 @@ import numpy as np
 from scipy.stats import genpareto, kstest
 from tqdm import tqdm
 from statsmodels.stats.multitest import fdrcorrection
-from .loading import apply_tfce, load_nifti_if_not_already_nifti, is_nifti_like, Dataset, load_data
+from .loading import apply_tfce, load_nifti_if_not_already_nifti, is_nifti_like, Dataset, load_data, prepare_glm_data
 from .stats import t, aspin_welch_v, F, G
 from nilearn.maskers import NiftiMasker
 import nibabel as nib
@@ -13,7 +13,7 @@ from sklearn.utils import Bunch
 import os
 
 
-def permutation_analysis(data, design, contrast, stat_function='auto', n_permutations=1000, random_state=42, two_tailed=True, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False, accel_tail=True, f_stat_function='auto', f_contrast_indices=None, f_only=False, correct_across_contrasts=False, on_permute_callback=None, permute=True):
+def permutation_analysis(data, design, contrast, stat_function='auto', n_permutations=1000, random_state=42, two_tailed=True, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False, accel_tail=True, demean=True, f_stat_function='auto', f_contrast_indices=None, f_only=False, correct_across_contrasts=False, on_permute_callback=None, permute=True):
     """
     Performs permutation testing on the provided data using a specified statistical function.
 
@@ -60,6 +60,8 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
     accel_tail : bool, default True
         If True, applies the accelerated tail method (GPD approximation) to compute FWE p-values
         for cases with low empirical exceedance counts.
+    demean : bool, default True
+        If True, the data is demeaned before applying the statistical function.
     f_stat_function : function or 'auto'
         A function that calculates the F-like statistic. Must accept arguments similar to `stat_function`.
         'auto' selects based on variance groups.
@@ -113,13 +115,13 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
         if contrast.shape[1] != design.shape[1]:
             raise ValueError("2D contrast dimensions must match number of regressors in design matrix")
     else: # contrast.ndim > 2
-        raise ValueError("Contrast must be 1D or 2D")
+        raise ValueError(f"Contrast must be 1D or 2D. Got {contrast.ndim}D. (Shape: {contrast.shape})")
     if exchangeability_matrix is not None and exchangeability_matrix.shape[0] != data.shape[0]:
         raise ValueError("Exchangeability matrix length must match number of samples")
     if vg_auto and exchangeability_matrix is None:
         raise ValueError("exchangeability_matrix must be provided if vg_auto is True")
     if f_contrast_indices is not None:
-        f_contrast_indices = np.array(np.squeeze(f_contrast_indices)).astype(bool).astype(int)
+        f_contrast_indices = np.atleast_1d(np.squeeze(f_contrast_indices)).astype(bool).astype(int)
     if f_only and f_contrast_indices is None and contrast.ndim == 1:
          warnings.warn("f_only is True, but f_contrast_indices is None and only one base contrast is provided. Performing F-test on this single contrast.")
          # Treat the single contrast as the one to test with F
@@ -137,10 +139,14 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
          warnings.warn("Multiple contrasts provided, but f_contrast_indices is None. No F-test will be performed.")
          # No F-test by default if multiple contrasts and no indices
 
+    if demean:
+        data, design, contrast, f_contrast_indices = prepare_glm_data(data, design, contrast, f_contrast_indices)
+
     # Ensure contrast is 2D
     original_contrast = np.atleast_2d(contrast)
     n_contrasts = original_contrast.shape[0]
     n_elements = data.shape[1] # Number of voxels/features etc.
+
 
     # Prepare f_contrast if F-test is needed
     perform_f_test = False
@@ -148,7 +154,7 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
     if f_contrast_indices is not None or f_only:
         perform_f_test = True
         if f_contrast_indices is not None:
-             f_contrast_indices = np.squeeze(np.asarray(f_contrast_indices))
+             f_contrast_indices = np.atleast_1d(np.squeeze(np.asarray(f_contrast_indices)))
              if f_contrast_indices.ndim > 1:
                  raise ValueError("f_contrast_indices must be 1D array or list of indices/booleans.")
              if f_contrast_indices.dtype == bool:
@@ -211,7 +217,7 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
         if correct_across_contrasts:
             global_max_stat_dist = []
         for i in range(n_contrasts):
-            current_contrast = np.squeeze(original_contrast[i:i+1])
+            current_contrast = np.atleast_1d(np.squeeze(original_contrast[i:i+1]))
             contrast_label = f"c{i+1}"
             print(f"--- Processing Contrast {i+1}/{n_contrasts} ---")
 
@@ -402,6 +408,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                                           two_tailed=True, exchangeability_matrix=None, vg_auto=False, vg_vector=None,
                                           within=True, whole=False, flip_signs=False,
                                           accel_tail=True,
+                                          demean=True,
                                           f_stat_function='auto', f_contrast_indices=None, f_only=False,
                                           correct_across_contrasts=False,
                                           on_permute_callback=None,
@@ -473,7 +480,11 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
     else:
         masker = NiftiMasker(mask_img=mask_img)
     data = masker.fit_transform(imgs)
+    mask_img = masker.mask_img_
     results = Bunch()
+
+    if demean:
+        data, design, contrast, f_contrast_indices = prepare_glm_data(data, design, contrast, f_contrast_indices)
 
     # How many contrasts are we looking at?
     original_contrast = np.atleast_2d(contrast)
@@ -488,19 +499,19 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
     observed_results = permutation_analysis(
         data=data, design=design, contrast=contrast, stat_function=stat_function, n_permutations=n_permutations, random_state=random_state,
         two_tailed=two_tailed, exchangeability_matrix=exchangeability_matrix, vg_auto=vg_auto, vg_vector=vg_vector,
-        within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail,
+        within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail, demean=False,
         f_stat_function=f_stat_function, f_contrast_indices=f_contrast_indices,f_only=f_only,
         permute=False
     )
 
     if not f_only:
-        if correct_across_contrasts:
+        if correct_across_contrasts and n_contrasts > 1:
             global_max_stat_dist = []
             if tfce:
                 global_max_stat_dist_tfce = []
         for contrast_idx in range(n_contrasts):
             print("Working on contrast %d/%d" % (contrast_idx + 1, n_contrasts))
-            contrast_vector = np.squeeze(original_contrast[contrast_idx, :])
+            contrast_vector = np.atleast_1d(np.squeeze(original_contrast[contrast_idx, :]))
             contrast_label = f"c{contrast_idx+1}"
             observed_stats = observed_results[f"{contrast_label}_observed_stat"]
 
@@ -517,7 +528,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
             perm_results = permutation_analysis(
                 data=data, design=design, contrast=contrast_vector, stat_function=stat_function, n_permutations=n_permutations, random_state=random_state,
                 two_tailed=two_tailed, exchangeability_matrix=exchangeability_matrix, vg_auto=vg_auto, vg_vector=vg_vector,
-                within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail,
+                within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail, demean=False,
                 on_permute_callback=on_permute_callback_final
             )
 
@@ -556,14 +567,14 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                 results[f"{contrast_label}_fwe_p_tfce_map"] = masker.inverse_transform(fwe_p_tfce)
                 results[f"{contrast_label}_observed_tfce_map"] = masker.inverse_transform(tfce_manager.true_stats_tfce)
 
-            if correct_across_contrasts:
+            if correct_across_contrasts and n_contrasts > 1:
                 global_max_stat_dist.append(perm_results.c1_max_stat_dist)
                 results[f"{contrast_label}_max_stat_dist"] = perm_results.c1_max_stat_dist
                 if tfce:
                     global_max_stat_dist_tfce.append(tfce_manager.max_stat_dist_tfce)
                     results[f"{contrast_label}_max_stat_dist_tfce"] = tfce_manager.max_stat_dist_tfce
 
-    if correct_across_contrasts and not f_only:
+    if correct_across_contrasts and n_contrasts > 1 and not f_only:
         if two_tailed:
             global_max_stat_dist = np.max(np.abs(global_max_stat_dist), axis=0)
             if tfce:
@@ -615,7 +626,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
 
     if perform_f_test:
         print("Working on F-test")
-        f_contrast = original_contrast[np.squeeze(f_contrast_indices), :]
+        f_contrast = np.atleast_1d(original_contrast[np.squeeze(f_contrast_indices), :])
         f_contrast_label = "f"
         observed_stats_f = observed_results[f"{f_contrast_label}_observed_stat"]
 
@@ -633,7 +644,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
         perm_results_f = permutation_analysis(
             data=data, design=design, contrast=f_contrast, stat_function=stat_function, n_permutations=n_permutations, random_state=random_state,
             two_tailed=two_tailed, exchangeability_matrix=exchangeability_matrix, vg_auto=vg_auto, vg_vector=vg_vector,
-            within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail,
+            within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail, demean=demean,
             f_stat_function=f_stat_function, f_contrast_indices=f_contrast_indices,f_only=True,
             on_permute_callback=on_permute_callback_final
         )
@@ -1059,7 +1070,7 @@ def yield_permuted_design(design, n_permutations, contrast=None, exchangeability
             # Note: This method is the Draper-Stoneman method, which is not what Anderson Winkler recommends.
             # To me, it makes more sense and is easier to implement than the Freedman-Lane method recommended by Anderson Winkler.
             contrast = np.atleast_2d(contrast)
-            contrast_indices = np.squeeze(contrast[0,:]).astype(bool)
+            contrast_indices = np.atleast_1d(np.squeeze(contrast[0,:]).astype(bool))
             design_subset = design[:, contrast_indices]
             design_subset = design_subset[permuted_row_indices, :]
             design[:, contrast_indices] = design_subset
@@ -1864,6 +1875,7 @@ class SavePermutationManager:
         self.prefix = f"{prefix}_" if prefix else ""
 
         self.masker = NiftiMasker(self.mask_img) if mask_img is not None else None
+        self.masker.fit() if self.masker else None
     
     def update(self, permuted_stats, perm_idx, contrast_idx, *args, **kwargs):
         """Updates the manager with new permutation results."""
@@ -1875,5 +1887,4 @@ class SavePermutationManager:
         else:
             filename = os.path.join(self.output_dir, f"{self.prefix}{contrast_label}_perm{perm_idx+1}.npy")
             np.save(filename, permuted_stats)
-
 

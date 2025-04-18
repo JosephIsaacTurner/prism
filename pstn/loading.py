@@ -163,7 +163,7 @@ def load_nifti_if_not_already_nifti(img):
     if isinstance(img, str):
         img = nib.load(img)
     elif not isinstance(img, nib.Nifti1Image):
-        raise ValueError("Input must be a Nifti1Image or a file path.")
+        raise ValueError("Input must be a Nifti1Image or a file path. Got: {}".format(type(img)))
     return img
 
 def is_nifti_like(data):
@@ -190,6 +190,7 @@ class Dataset:
         n_permutations: int,
         random_state: Optional[Union[int, np.random.RandomState]] = None,
         mask_img: Optional[Union[str, nib.Nifti1Image]] = None,
+        demean=True,
         # Permutation options
         exchangeability_matrix: Optional[Union[str, np.ndarray]] = None,
         vg_auto: bool = False,
@@ -215,6 +216,7 @@ class Dataset:
             n_permutations: Number of permutations for testing.
             random_state: Seed or RandomState object for reproducibility.
             mask_img: Optional mask (path or Nifti1Image) for NIfTI data.
+            demean: Flag to demean data (default: True).
             exchangeability_matrix: Optional array defining permutation blocks.
             vg_auto: If True, auto-generate variance groups from exch. matrix.
             vg_vector: Optional array defining variance groups.
@@ -235,6 +237,7 @@ class Dataset:
         # Core analysis parameters
         self.stat_function = stat_function
         self.n_permutations = n_permutations
+        self.demean = demean
         # Ensure random_state is a numpy RandomState object
         if random_state is None or isinstance(random_state, np.random.RandomState):
             self.random_state = random_state
@@ -313,6 +316,10 @@ class Dataset:
             self.vg_vector = load_data(self._vg_vector_input)
             if not isinstance(self.vg_vector, np.ndarray): raise TypeError("Variance group vector must load as NumPy array.")
 
+        # If demean is True, demean the data
+        if self.demean:
+            self.data, self.design, self.contrast, f_contrast_indices = prepare_glm_data(self.data, self.design, self.contrast)
+
         # --- Final Shape Validation ---
         n_samples = self.data.shape[0]
         n_regressors = self.design.shape[1]
@@ -326,3 +333,72 @@ class Dataset:
              raise ValueError(f"Shape mismatch: Exch. matrix samples ({self.exchangeability_matrix.shape[0]}) != Data samples ({n_samples}).")
         if self.vg_vector is not None and self.vg_vector.shape[0] != n_samples:
              raise ValueError(f"Shape mismatch: VG vector samples ({self.vg_vector.shape[0]}) != Data samples ({n_samples}).")
+        
+
+def prepare_glm_data(Y, X, C, f_contrast_indices=None):
+    """
+    Demean Y and X (dropping constant columns), adjust contrast C, and update F-contrast indices.
+    Continuous covariates are centered; binary/dummy columns are left as 0/1.
+    Intercepts are dropped from X, C, and f_contrast_indices.
+
+    Parameters
+    ----------
+    Y : ndarray, shape (n, p)
+        Response data.
+    X : ndarray, shape (n, k)
+        Design matrix.
+    C : ndarray, shape (k,) or (q, k)
+        Contrast vector or matrix.
+    f_contrast_indices : list of int, optional
+        Indices of F-contrast rows in C (only for C.ndim > 1).
+
+    Returns
+    -------
+    Y_d : ndarray, shape (n, p)
+        Demeaned response data.
+    X_d : ndarray, shape (n, k')
+        Design matrix without constant columns, with continuous covariates centered.
+    C_d : ndarray, shape (k',) or (q', k')
+        Adjusted contrast vector or matrix with zero-contrast rows removed.
+    f_contrast_indices_d : list of int or None
+        Adjusted F-contrast indices after row removals. None if <=1 contrasts remain.
+    """
+    # 1) Center Y
+    Y_d = Y - Y.mean(axis=0)
+
+    # 2) Drop intercept (constant) columns in X
+    const_cols = np.ptp(X, axis=0) == 0
+    X_trim = X[:, ~const_cols]
+    if X_trim.ndim == 1:
+        X_trim = X_trim[:, None]
+
+    # 3) Identify continuous vs. dummy columns
+    #    Treat columns with more than two unique values as continuous
+    uniq_counts = [np.unique(X_trim[:, i]).size for i in range(X_trim.shape[1])]
+    continuous_mask = np.array(uniq_counts) > 2
+
+    # 4) Center only continuous covariates
+    X_d = X_trim.copy().astype(float)
+    for i, is_cont in enumerate(continuous_mask):
+        if is_cont:
+            X_d[:, i] -= X_trim[:, i].mean()
+
+    # 5) Adjust contrast matrix and remove zero-contrast rows
+    C_arr = np.atleast_2d(C)
+    C_trim = C_arr[:, ~const_cols]
+    non_zero_rows = ~np.all(C_trim == 0, axis=1)
+    C_kept = C_trim[non_zero_rows]
+    C_d = C_kept.ravel() if C.ndim == 1 else C_kept
+
+    # 6) Update F-contrast indices if provided
+    f_d = None
+    if f_contrast_indices is not None and C.ndim > 1:
+        retained_rows = np.flatnonzero(non_zero_rows)
+        idx_map = {orig: new_i for new_i, orig in enumerate(retained_rows)}
+        f_list = [
+            idx_map[idx] for idx in np.squeeze(f_contrast_indices) if idx in idx_map
+        ]
+        if len(f_list) > 1:
+            f_d = f_list
+
+    return Y_d, X_d, C_d, f_d

@@ -3,17 +3,19 @@ import os
 import sys
 import numpy as np
 import nibabel as nib
+from nilearn.maskers import NiftiMasker
 from .loading import load_data, is_nifti_like
 from .inference import permutation_analysis, permutation_analysis_volumetric_dense, SavePermutationManager
-from .stats import t
+from .stats import pearson_r, r_squared
 
 # TODO:
 # Implement other statistical methods beyond t-test
+# Implement vgdemean
 # As of Friday, April 17th, 2025
 NON_IMPLEMENTED_ARGS = [
     '-s', '-npcmethod', '-npcmod', '-npccon', '-npc',
     '-mv', '-C', '-Cstat', '-tfce1D', '-tfce2D', '-corrmod',
-    '-demean', '-concordant', '-reversemasks', '-quiet', '-advanced', 
+    '-concordant', '-reversemasks', '-quiet', '-advanced', 
     '-con', '-tonly', '-cmcp', '-cmcx', '-conskipcount', '-Cuni', '-Cnpc', 
     '-Cmv', '-designperinput', '-ev4vg', '-evperdat', '-inormal', '-probit', 
     '-inputmv', '-noranktest', '-noniiclass', '-nounivariate', '-nouncorrected',
@@ -75,6 +77,10 @@ def setup_parser():
                         help='Enable acceleration. Can accept "tail" as a value')
     parser.add_argument('-corrcon', "--correct_across_contrasts", action='store_true', default=False,
                         help='Use FWE correction across contrasts')
+    parser.add_argument('-pearson', "--pearson_r", action='store_true', default=False,
+                        help='Use Pearson r instead of t-statistic')
+    parser.add_argument('-demean', "--demean", action='store_true', default=False,
+                        help='Demean the data before analysis')
     parser.add_argument('-saveperms', "--save_permutations", action='store_true', default=False,
                         help='Save one statistic image per permutation')
     parser.add_argument('-seed', '--random_state', type=int, default=42,
@@ -227,9 +233,17 @@ def main():
 
     output_prefix = get_output_path(args.output)
     if args.save_permutations:
+        if input_is_nifti_like and args.mask is None:
+            masker = NiftiMasker().fit(data[0])
+            mask_img = masker.mask_img_
+        else:
+            mask_img = args.mask
+
+        output_dir = os.path.join(os.path.dirname(output_prefix), "permutations")
+        os.makedirs(output_dir, exist_ok=True)
         save_permutation_manager = SavePermutationManager(
-            output_dir=os.path.dirname(output_prefix),
-            mask_img=args.mask,
+            output_dir=output_dir,
+            mask_img=mask_img,
             prefix=os.path.basename(output_prefix) if os.path.basename(output_prefix) else ""
         )
         on_permute_callback = save_permutation_manager.update
@@ -249,7 +263,7 @@ def main():
             mask_img=mask_img,
             design=design,
             contrast=contrast,
-            stat_function='auto',
+            stat_function='auto' if not args.pearson_r else pearson_r,
             n_permutations=args.n_permutations,
             random_state=args.random_state,
             two_tailed=args.two_tailed,
@@ -260,7 +274,8 @@ def main():
             whole=args.whole,
             flip_signs=args.flip_signs,
             accel_tail=args.accel,
-            f_stat_function='auto',
+            demean=args.demean,
+            f_stat_function='auto' if not args.pearson_r else r_squared, 
             f_contrast_indices=f_contrast_indices,
             f_only=args.f_only,
             correct_across_contrasts=args.correct_across_contrasts,
@@ -281,7 +296,7 @@ def main():
             data=data,
             design=design,
             contrast=contrast,
-            stat_function='auto',
+            stat_function='auto' if not args.pearson_r else pearson_r,
             n_permutations=args.n_permutations,
             random_state=args.random_state,
             two_tailed=args.two_tailed,
@@ -292,7 +307,8 @@ def main():
             whole=args.whole,
             flip_signs=args.flip_signs,
             accel_tail=args.accel,
-            f_stat_function='auto',
+            demean=args.demean,
+            f_stat_function='auto' if not args.pearson_r else r_squared,
             f_contrast_indices=f_contrast_indices,
             f_only=args.f_only,
             correct_across_contrasts=args.correct_across_contrasts,
