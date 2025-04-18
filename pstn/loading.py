@@ -138,7 +138,7 @@ def load_data(input):
         # print("Warning: Input is not a string. Probably already loaded data.")
         return input
     if input.endswith('.csv'):
-        data = pd.read_csv(input).values
+        data = pd.read_csv(input, header=None).values
         if data.shape[1] == 1:
             data = data[:, 0] # Convert to 1D array if only one column
     elif input.endswith('.npy'):
@@ -175,9 +175,12 @@ def is_nifti_like(data):
     Returns:
     - bool: True if data is Nifti-like, False otherwise
     """
-    return isinstance(data, (nib.Nifti1Image)) or (isinstance(data, str) and (data.endswith('.nii') or data.endswith('.nii.gz')))
+    return isinstance(data, nib.Nifti1Image) or (isinstance(data, str) and (data.endswith('.nii') or data.endswith('.nii.gz')))
 
 class Dataset:
+    """
+    Represents a single dataset for analysis, handling data loading and masking.
+    """
     def __init__(
         self,
         data: Union[str, np.ndarray, nib.Nifti1Image],
@@ -185,23 +188,43 @@ class Dataset:
         contrast: Union[str, np.ndarray],
         stat_function: Callable,
         n_permutations: int,
-        random_state: Optional[int] = None,
+        random_state: Optional[Union[int, np.random.RandomState]] = None,
         mask_img: Optional[Union[str, nib.Nifti1Image]] = None,
-        # Optional permutation parameters
+        # Permutation options
         exchangeability_matrix: Optional[Union[str, np.ndarray]] = None,
         vg_auto: bool = False,
         vg_vector: Optional[Union[str, np.ndarray]] = None,
         within: bool = True,
         whole: bool = False,
         flip_signs: bool = False,
-        # Stat function related
-        tfce: bool = False, # Assumed to be used by stat_function if True
-        # Output/Saving related (kept as requested, but not used here)
+        # Stat function options (handled by stat_function itself)
+        tfce: bool = False,
+        # Output saving flags (not directly used in analysis logic here)
         save_1minusp: bool = True,
         save_neglog10p: bool = False,
         save_permutations: bool = False
     ):
-        # Store paths/initial data
+        """
+        Initializes a Dataset object.
+
+        Args:
+            data: Path to data file or loaded data (ndarray/Nifti1Image).
+            design: Path to design matrix file or loaded array.
+            contrast: Path to contrast file or loaded array.
+            stat_function: Callable that computes statistics (e.g., t-stats).
+            n_permutations: Number of permutations for testing.
+            random_state: Seed or RandomState object for reproducibility.
+            mask_img: Optional mask (path or Nifti1Image) for NIfTI data.
+            exchangeability_matrix: Optional array defining permutation blocks.
+            vg_auto: If True, auto-generate variance groups from exch. matrix.
+            vg_vector: Optional array defining variance groups.
+            within: Permute within blocks (if exch. matrix is 1D).
+            whole: Permute whole blocks (if exch. matrix is 1D).
+            flip_signs: Use sign-flipping permutations.
+            tfce: Flag indicating if stat_function uses TFCE (handled internally by function).
+            save_*: Flags for saving specific output types (informational).
+        """
+        # Store inputs (paths or raw data)
         self._data_input = data
         self._design_input = design
         self._contrast_input = contrast
@@ -209,78 +232,80 @@ class Dataset:
         self._exchangeability_matrix_input = exchangeability_matrix
         self._vg_vector_input = vg_vector
 
-        # Core parameters
+        # Core analysis parameters
         self.stat_function = stat_function
         self.n_permutations = n_permutations
-        self.random_state = random_state
+        # Ensure random_state is a numpy RandomState object
+        if random_state is None or isinstance(random_state, np.random.RandomState):
+            self.random_state = random_state
+        else:
+            self.random_state = np.random.RandomState(random_state)
 
-        # Permutation control
-        self.exchangeability_matrix: Optional[np.ndarray] = None
+        # Permutation control flags
         self.vg_auto = vg_auto
-        self.vg_vector: Optional[np.ndarray] = None
         self.within = within
         self.whole = whole
         self.flip_signs = flip_signs
+        self.tfce = tfce # Store TFCE flag, but logic is in stat_function
 
-        # Stat function related
-        self.tfce = tfce # Needs to be handled by the stat_function
-
-        # Loaded data/state
-        self.data: Optional[np.ndarray] = None
-        self.design: Optional[np.ndarray] = None
-        self.contrast: Optional[np.ndarray] = None
+        # Loaded data/state (initialized to None)
+        self.data: Optional[np.ndarray] = None # (n_samples, n_features)
+        self.design: Optional[np.ndarray] = None # (n_samples, n_regressors)
+        self.contrast: Optional[np.ndarray] = None # (n_regressors,) or (n_contrasts, n_regressors)
         self.mask_img: Optional[nib.Nifti1Image] = None
         self.masker: Optional[NiftiMasker] = None
         self.is_nifti: bool = False
+        self.exchangeability_matrix: Optional[np.ndarray] = None
+        self.vg_vector: Optional[np.ndarray] = None # (n_samples,)
 
-        # Results storage within dataset
-        self.true_stats: Optional[np.ndarray] = None
+        # Results storage within dataset (populated by analysis steps)
+        self.true_stats: Optional[np.ndarray] = None # (n_features,)
         self.permuted_stat_generator: Optional[Generator] = None
 
-        # Output saving flags (not used in analysis function itself)
+        # Store saving flags
         self.save_1minusp = save_1minusp
         self.save_neglog10p = save_neglog10p
         self.save_permutations = save_permutations
 
-
     def load_data(self):
-        """Loads all data components from paths or uses provided arrays."""
-        print(f"Loading data for dataset...") # Add identifier if possible
-
-        loaded_data = load_data(self._data_input)
-        self.is_nifti = isinstance(loaded_data, nib.spatialimages.SpatialImage)
+        """Loads data, design, contrast, and optional arrays from inputs."""
+        # --- Load Main Data (and handle masking if NIfTI) ---
+        loaded_data = load_data(self._data_input) # Assumes load_data utility exists
+        self.is_nifti = is_nifti_like(loaded_data) # Assumes is_nifti_like utility exists
 
         if self.is_nifti:
-            nifti_data = loaded_data
+            nifti_data = load_nifti_if_not_already_nifti(loaded_data) # Assumes utility exists
             if self._mask_img_input:
                 self.mask_img = load_nifti_if_not_already_nifti(self._mask_img_input)
                 self.masker = NiftiMasker(mask_img=self.mask_img)
-                print("  - Applying provided mask to NIfTI data.")
-                self.data = self.masker.fit_transform(nifti_data)
             else:
-                warnings.warn("NIfTI data provided without mask. Auto-masking.")
-                self.masker = NiftiMasker()
-                self.data = self.masker.fit_transform(nifti_data)
-                self.mask_img = self.masker.mask_img_
-                print(f"  - Auto mask applied. Mask shape: {self.mask_img.shape}, Data shape: {self.data.shape}")
+                warnings.warn("NIfTI data provided without mask; using NiftiMasker for auto-masking.")
+                self.masker = NiftiMasker() # Default strategy
+            # Fit masker (if needed) and transform data
+            self.data = self.masker.fit_transform(nifti_data)
+            if self.mask_img is None: self.mask_img = self.masker.mask_img_ # Store auto-generated mask
+            # Ensure data is 2D (samples x features)
             if self.data.ndim == 1: self.data = self.data[:, np.newaxis]
+            elif self.data.ndim != 2: raise ValueError(f"Masked NIfTI data shape {self.data.shape} unexpected.")
         else:
-            if isinstance(loaded_data, np.ndarray):
-                 self.data = loaded_data
-                 print(f"  - Loaded non-NIfTI data. Shape: {self.data.shape}")
-            else:
-                 raise TypeError(f"Loaded data is not NumPy array or NIfTI. Type: {type(loaded_data)}")
-            if self._mask_img_input:
-                warnings.warn("Mask image provided, but data not NIfTI. Mask ignored.")
-            if self.data.ndim == 1: self.data = self.data[:, np.newaxis]
-            elif self.data.ndim != 2:
-                 raise ValueError(f"Non-NIfTI data must be 1D or 2D. Got shape {self.data.shape}")
+            # Handle non-NIfTI data (must be ndarray)
+            if not isinstance(loaded_data, np.ndarray):
+                 raise TypeError(f"Loaded data is not NumPy array or NIfTI (type: {type(loaded_data)}).")
+            self.data = loaded_data
+            self.masker = None
+            self.mask_img = None
+            if self._mask_img_input: warnings.warn("Mask ignored for non-NIfTI data.")
+            # Ensure data is 2D (samples x features)
+            if self.data.ndim == 1: self.data = self.data[np.newaxis, :] # Assume 1 sample
+            elif self.data.ndim != 2: raise ValueError(f"Non-NIfTI data must be 1D or 2D; got {self.data.shape}.")
 
+        # --- Load Design and Contrast ---
         self.design = load_data(self._design_input)
         self.contrast = load_data(self._contrast_input)
         if not isinstance(self.design, np.ndarray): raise TypeError("Design must load as NumPy array.")
         if not isinstance(self.contrast, np.ndarray): raise TypeError("Contrast must load as NumPy array.")
 
+        # --- Load Optional Permutation Arrays ---
         if self._exchangeability_matrix_input is not None:
             self.exchangeability_matrix = load_data(self._exchangeability_matrix_input)
             if not isinstance(self.exchangeability_matrix, np.ndarray): raise TypeError("Exchangeability matrix must load as NumPy array.")
@@ -288,4 +313,16 @@ class Dataset:
             self.vg_vector = load_data(self._vg_vector_input)
             if not isinstance(self.vg_vector, np.ndarray): raise TypeError("Variance group vector must load as NumPy array.")
 
-        print("  - Data loading complete.")
+        # --- Final Shape Validation ---
+        n_samples = self.data.shape[0]
+        n_regressors = self.design.shape[1]
+        if self.design.shape[0] != n_samples:
+             raise ValueError(f"Shape mismatch: Data samples ({n_samples}) != Design samples ({self.design.shape[0]}).")
+        if self.contrast.ndim == 1 and self.contrast.shape[0] != n_regressors:
+             raise ValueError(f"Shape mismatch: Contrast vector ({self.contrast.shape[0]}) != Design regressors ({n_regressors}).")
+        elif self.contrast.ndim == 2 and self.contrast.shape[1] != n_regressors:
+             raise ValueError(f"Shape mismatch: Contrast matrix cols ({self.contrast.shape[1]}) != Design regressors ({n_regressors}).")
+        if self.exchangeability_matrix is not None and self.exchangeability_matrix.shape[0] != n_samples:
+             raise ValueError(f"Shape mismatch: Exch. matrix samples ({self.exchangeability_matrix.shape[0]}) != Data samples ({n_samples}).")
+        if self.vg_vector is not None and self.vg_vector.shape[0] != n_samples:
+             raise ValueError(f"Shape mismatch: VG vector samples ({self.vg_vector.shape[0]}) != Data samples ({n_samples}).")

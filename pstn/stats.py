@@ -117,6 +117,9 @@ def aspin_welch_v(data, design_matrix, contrast_vector, group_ids, max_n_groups)
     n_samples, nT = data.shape
     n_regressors = design_matrix.shape[1]
 
+    # Ensure contrast_vector is 1D (n_regressors,)
+    contrast_vector = jnp.squeeze(contrast_vector)
+
     # --- GLM Fit & Residuals ---
     M = design_matrix
     MtM = M.T @ M

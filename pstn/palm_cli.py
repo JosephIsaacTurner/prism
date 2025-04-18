@@ -4,17 +4,15 @@ import sys
 import numpy as np
 import nibabel as nib
 from .loading import load_data, is_nifti_like
-from .inference import permutation_analysis, permutation_analysis_volumetric_dense
+from .inference import permutation_analysis, permutation_analysis_volumetric_dense, SavePermutationManager
 from .stats import t
 
 # TODO:
-# Implement saveperms,
 # Implement other statistical methods beyond t-test
-# Implement zstat (easy to do, worthwhile probably)
-# As of Friday, April 11th, 2025
+# As of Friday, April 17th, 2025
 NON_IMPLEMENTED_ARGS = [
-    '-s', '-f', '-fonly', '-npcmethod', '-npcmod', '-npccon', '-npc',
-    '-mv', '-C', '-Cstat', '-tfce1D', '-tfce2D', '-corrmod', '-corrcon',
+    '-s', '-npcmethod', '-npcmod', '-npccon', '-npc',
+    '-mv', '-C', '-Cstat', '-tfce1D', '-tfce2D', '-corrmod',
     '-demean', '-concordant', '-reversemasks', '-quiet', '-advanced', 
     '-con', '-tonly', '-cmcp', '-cmcx', '-conskipcount', '-Cuni', '-Cnpc', 
     '-Cmv', '-designperinput', '-ev4vg', '-evperdat', '-inormal', '-probit', 
@@ -40,6 +38,10 @@ def setup_parser():
                         help='Design matrix file (.csv or .npy)')
     required.add_argument('-t', '--contrast', required=True,
                         help='Contrast file (.csv or .npy)')
+    parser.add_argument('-f', '--f_contrast_indices', type=str, default=None,
+                        help='File identifying the indices of the contrasts to be used for F-test (.csv or .npy)')
+    parser.add_argument('-fonly', "--f_only", action='store_true', default=False,
+                        help='Perform F-test only')
     parser.add_argument('-o', '--output', default='palm',
                     help='Output prefix for all saved files')
     # Optional arguments
@@ -71,6 +73,8 @@ def setup_parser():
                         help='Do two-tailed voxelwise tests')
     parser.add_argument('-accel', "--accel", nargs='?', const=True, default=False,
                         help='Enable acceleration. Can accept "tail" as a value')
+    parser.add_argument('-corrcon', "--correct_across_contrasts", action='store_true', default=False,
+                        help='Use FWE correction across contrasts')
     parser.add_argument('-saveperms', "--save_permutations", action='store_true', default=False,
                         help='Save one statistic image per permutation')
     parser.add_argument('-seed', '--random_state', type=int, default=42,
@@ -107,6 +111,14 @@ def validate_args(args):
         
         if not (file_arg.endswith('.csv') or file_arg.endswith('.npy')):
             sys.exit(f"Error: {arg_name} file must be .csv or .npy format")
+
+    # Check f_contrast_indices file if provided
+    if args.f_contrast_indices:
+        if not os.path.exists(args.f_contrast_indices):
+            sys.exit(f"Error: F-contrast indices file '{args.f_contrast_indices}' does not exist")
+        
+        if not (args.f_contrast_indices.endswith('.csv') or args.f_contrast_indices.endswith('.npy')):
+            sys.exit("Error: F-contrast indices file must be .csv or .npy format")
     
     # Check exchangeability blocks file if provided
     if args.exchangeability_blocks and not os.path.exists(args.exchangeability_blocks):
@@ -145,6 +157,7 @@ def validate_args(args):
         # Both were explicitly specified
         args.logp = False
         print("Warning: Both -save1-p and -logp were specified. Using -save1-p.")
+
 
     for arg in NON_IMPLEMENTED_ARGS:
         if getattr(args, arg[1:], False):
@@ -196,7 +209,6 @@ def main():
     print(f"Contrast: {args.contrast}")
     print(f"Number of permutations: {args.n_permutations}")
     print(f"Output prefix: {args.output}")
-    print("...")
     
     # Continue with the actual processing...
     # Your PALM implementation code would go here
@@ -204,20 +216,40 @@ def main():
     design = load_data(args.design)
     contrast = load_data(args.contrast)
 
+    if args.f_contrast_indices:
+        f_contrast_indices = load_data(args.f_contrast_indices)
+        print(f"F-contrast indices: {f_contrast_indices}")
+    else:
+        f_contrast_indices = None
+
     stat_type = 't'
     input_is_nifti_like = is_nifti_like(data[0])
 
+    output_prefix = get_output_path(args.output)
+    if args.save_permutations:
+        save_permutation_manager = SavePermutationManager(
+            output_dir=os.path.dirname(output_prefix),
+            mask_img=args.mask,
+            prefix=os.path.basename(output_prefix) if os.path.basename(output_prefix) else ""
+        )
+        on_permute_callback = save_permutation_manager.update
+    else:
+        on_permute_callback = None
+
+
     if input_is_nifti_like:
+        print("Input data is NIfTI-like. Using volumetric dense analysis.")
         # Verify that we got a mask img
         if args.mask is None:
             print ("Warning: Mask image not provided. We'll try to move forward, but behavior may be unpredictable.")
         mask_img = args.mask
+
         results = permutation_analysis_volumetric_dense(
             imgs=data,
             mask_img=mask_img,
             design=design,
             contrast=contrast,
-            stat_function=t,
+            stat_function='auto',
             n_permutations=args.n_permutations,
             random_state=args.random_state,
             two_tailed=args.two_tailed,
@@ -228,39 +260,28 @@ def main():
             whole=args.whole,
             flip_signs=args.flip_signs,
             accel_tail=args.accel,
+            f_stat_function='auto',
+            f_contrast_indices=f_contrast_indices,
+            f_only=args.f_only,
+            correct_across_contrasts=args.correct_across_contrasts,
+            on_permute_callback=on_permute_callback,
             tfce=args.tfce,
             save_1minusp=args.save1_p,
             save_neglog10p=args.logp,
         )
 
-        output_prefix = get_output_path(args.output)
-
         for key, value in results.items():
-            if key == "true_map":
-                nib.save(value, f"{output_prefix}_stat-{stat_type}.nii.gz")
-            elif key == 'unc_p_map':
-                nib.save(value, f"{output_prefix}_uncp.nii.gz")
-            elif key == 'fdr_p_map':
-                nib.save(value, f"{output_prefix}_fdr.nii.gz")
-            elif key == "fwe_p_map":
-                nib.save(value, f"{output_prefix}_fwe.nii.gz")
-            elif key == 'tfce_p_map':
-                nib.save(value, f"{output_prefix}_tfcep.nii.gz")
-            elif key == 'true_tfce_map':
-                nib.save(value, f"{output_prefix}_tfce_stat-{stat_type}.nii.gz")
-            elif key == 'unc_p_tfce_map':
-                nib.save(value, f"{output_prefix}_uncp_tfce.nii.gz")
-            elif key == 'fdr_p_tfce_map':
-                nib.save(value, f"{output_prefix}_fdr_tfce.nii.gz")
-            elif key == 'fwe_p_tfce_map':
-                nib.save(value, f"{output_prefix}_fwe_tfce.nii.gz")
+            if "map" in key:
+                nib.save(value, f"{output_prefix}_{key}.nii.gz")
+            else:
+                np.save(f"{output_prefix}_{key}.npy", value)
 
     else:
-        unc_p, fdr_p, fwe_p = permutation_analysis(
+        results = permutation_analysis(
             data=data,
             design=design,
             contrast=contrast,
-            stat_function=t,
+            stat_function='auto',
             n_permutations=args.n_permutations,
             random_state=args.random_state,
             two_tailed=args.two_tailed,
@@ -270,28 +291,25 @@ def main():
             within=args.within,
             whole=args.whole,
             flip_signs=args.flip_signs,
-            accel_tail=args.accel
+            accel_tail=args.accel,
+            f_stat_function='auto',
+            f_contrast_indices=f_contrast_indices,
+            f_only=args.f_only,
+            correct_across_contrasts=args.correct_across_contrasts,
+            on_permute_callback=on_permute_callback,
         )
 
-        # Save the results
-        output_prefix = get_output_path(args.output)
+        for key, value in results.items():
+            if "_p" in key:
+                if args.save1_p:
+                    value = 1 - value
 
-        if args.save1_p:
-            unc_p = 1 - unc_p
-            fdr_p = 1 - fdr_p
-            fwe_p = 1 - fwe_p
+                elif args.logp:
+                    value = -np.log10(value)
 
-        if args.logp:
-            unc_p = -np.log10(unc_p)
-            fdr_p = -np.log10(fdr_p)
-            fwe_p = -np.log10(fwe_p)
-
-        np.save(f"{output_prefix}_uncp.npy", unc_p)
-        np.save(f"{output_prefix}_fdr.npy", fdr_p)
-        np.save(f"{output_prefix}_fwe.npy", fwe_p)
+            np.save(f"{output_prefix}_{key}.npy", value)
 
     print("Analysis complete. Results saved to output files.")
        
-
 if __name__ == "__main__":
     main()
