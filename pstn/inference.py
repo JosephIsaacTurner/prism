@@ -154,19 +154,21 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
     if f_contrast_indices is not None or f_only:
         perform_f_test = True
         if f_contrast_indices is not None:
-             f_contrast_indices = np.atleast_1d(np.squeeze(np.asarray(f_contrast_indices)))
+             f_contrast_indices = np.atleast_1d(np.squeeze(np.asarray(f_contrast_indices))).astype(bool)
              if f_contrast_indices.ndim > 1:
                  raise ValueError("f_contrast_indices must be 1D array or list of indices/booleans.")
+             if f_contrast_indices.shape[0] > n_contrasts:
+                f_contrast_indices = f_contrast_indices[:n_contrasts]
              if f_contrast_indices.dtype == bool:
                  if len(f_contrast_indices) != n_contrasts:
                       raise ValueError(f"Boolean f_contrast_indices length ({len(f_contrast_indices)}) must match number of contrasts ({n_contrasts})")
-                 f_contrast = original_contrast[f_contrast_indices]
+                 f_contrast = original_contrast[f_contrast_indices, :]
              else: # Integer indices
                  if np.max(f_contrast_indices) >= n_contrasts or np.min(f_contrast_indices) < 0:
                      raise ValueError(f"f_contrast_indices values out of bounds for {n_contrasts} contrasts.")
-                 f_contrast = original_contrast[f_contrast_indices]
+                 f_contrast = original_contrast[f_contrast_indices, :]
         elif f_only: # Indices were None, f_only is True -> use all original contrasts
-             f_contrast = original_contrast
+            f_contrast = original_contrast
 
         if f_contrast is None or f_contrast.shape[0] == 0:
             raise ValueError("Cannot perform F-test: f_contrast_indices resulted in an empty set of contrasts.")
@@ -626,7 +628,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
 
     if perform_f_test:
         print("Working on F-test")
-        f_contrast = np.atleast_1d(original_contrast[np.squeeze(f_contrast_indices), :])
+        f_contrast = np.atleast_1d(original_contrast[np.atleast_1d(np.squeeze(f_contrast_indices).astype(bool)), :])
         f_contrast_label = "f"
         observed_stats_f = observed_results[f"{f_contrast_label}_observed_stat"]
 
@@ -644,7 +646,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
         perm_results_f = permutation_analysis(
             data=data, design=design, contrast=f_contrast, stat_function=stat_function, n_permutations=n_permutations, random_state=random_state,
             two_tailed=two_tailed, exchangeability_matrix=exchangeability_matrix, vg_auto=vg_auto, vg_vector=vg_vector,
-            within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail, demean=demean,
+            within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail, demean=False,
             f_stat_function=f_stat_function, f_contrast_indices=f_contrast_indices,f_only=True,
             on_permute_callback=on_permute_callback_final
         )

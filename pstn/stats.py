@@ -334,7 +334,7 @@ def r_squared(Y, X, C, *args, **kwargs):
     V = C @ XtX_inv @ C.T
     V_inv = pinv(V)
     # model sum of squares per voxel
-    ss_mod = jnp.einsum("mi,ij,mj->i", CB, V_inv, CB)
+    ss_mod = jnp.einsum("mp,mn,np->p", CB, V_inv, CB)
     # compute R²
     r2_vals = ss_mod / (ss_mod + df * mse)
     return jnp.nan_to_num(r2_vals, nan=0.0, posinf=1.0, neginf=0.0)
