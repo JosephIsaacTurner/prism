@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+import re
 import numpy as np
 import nibabel as nib
 from nilearn.maskers import NiftiMasker
@@ -258,12 +259,15 @@ def main():
             print ("Warning: Mask image not provided. We'll try to move forward, but behavior may be unpredictable.")
         mask_img = args.mask
 
+        stat_function = 'auto' if not args.pearson_r else pearson_r
+        f_stat_function = 'auto' if not args.pearson_r else r_squared
+
         results = permutation_analysis_volumetric_dense(
             imgs=data,
             mask_img=mask_img,
             design=design,
             contrast=contrast,
-            stat_function='auto' if not args.pearson_r else pearson_r,
+            stat_function=stat_function,
             n_permutations=args.n_permutations,
             random_state=args.random_state,
             two_tailed=args.two_tailed,
@@ -275,7 +279,7 @@ def main():
             flip_signs=args.flip_signs,
             accel_tail=args.accel,
             demean=args.demean,
-            f_stat_function='auto' if not args.pearson_r else r_squared, 
+            f_stat_function=f_stat_function,
             f_contrast_indices=f_contrast_indices,
             f_only=args.f_only,
             correct_across_contrasts=args.correct_across_contrasts,
@@ -286,7 +290,42 @@ def main():
         )
 
         for key, value in results.items():
-            if "map" in key:
+            # If its not an F test (only testing single contrasts):
+            if not key.endswith("f"):
+                # Case if we assume equal variance and we are using default functions for contrast testing
+                if stat_function == 'auto' and args.variance_groups is None:
+                    # This means we are doing a t test.
+                    if (re.search(r"stat_.*_c\d+", key)) or (re.search(r"stat_c\d+", key)):
+                        key = key.replace("stat", "tstat")
+                # Case if we have unequal variance between groups and we are using default functions for contrast testing
+                elif stat_function == 'auto' and args.variance_groups is not None:
+                    # This means we are doing an aspin_welch_v test.
+                    if (re.search(r"stat_.*_c\d+", key)) or (re.search(r"stat_c\d+", key)):
+                        key = key.replace("stat", "vstat")
+                # Case if stat_function == pearson_r
+                elif stat_function == pearson_r:
+                    # This means we are doing a pearson r test.
+                    if (re.search(r"stat_.*_c\d+", key)) or (re.search(r"stat_c\d+", key)):
+                        key = key.replace("stat", "rstat")
+            # If it IS an F test (testing multiple contrasts):
+            else:
+                # Case if we assume equal variance and we are using default functions for f testing
+                if f_stat_function == 'auto' and args.variance_groups is None:
+                    # In this case, we are actually doing an F test.
+                    if (re.search(r"stat_.*_f", key)) or key.endswith("stat_f"):
+                        key = key.replace("stat", "fstat")
+                # Case if we have unequal variance between groups and we are using default functions for f testing
+                elif f_stat_function == 'auto' and args.variance_groups is not None:
+                    # In this case, we are actually doing a generalized f test, which is a G statistic.
+                    if (re.search(r"stat_.*f", key)) or key.endswith("stat_f"):
+                        key = key.replace("stat", "gstat")
+                # Case if we f_stat_function == r_squared
+                elif f_stat_function == r_squared:
+                    # This means we are doing a r_squared test.
+                    if (re.search(r"stat_.*_f", key)) or key.endswith("stat_f"):
+                        key = key.replace("stat", "rsqstat")
+
+            if "vox_" in key:
                 nib.save(value, f"{output_prefix}_{key}.nii.gz")
             else:
                 np.save(f"{output_prefix}_{key}.npy", value)
@@ -323,7 +362,7 @@ def main():
                 elif args.logp:
                     value = -np.log10(value)
 
-            np.save(f"{output_prefix}_{key}.npy", value)
+            np.save(f"{output_prefix}_dat_{key}.npy", value)
 
     print("Analysis complete. Results saved to output files.")
        

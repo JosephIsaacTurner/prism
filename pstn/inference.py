@@ -296,12 +296,12 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
                         fwe_p = (np.sum(max_stat_dist[None, :] >= true_stats[:, None], axis=1) + 1.0) / (n_permutations + 1.0)
 
                 # Store results for this contrast
-                results[f"{contrast_label}_max_stat_dist"] = max_stat_dist
-                results[f"{contrast_label}_unc_p"] = unc_p
-                results[f"{contrast_label}_fdr_p"] = fdr_p
-                results[f"{contrast_label}_fwe_p"] = fwe_p
+                results[f"max_stat_dist_{contrast_label}"] = max_stat_dist
+                results[f"stat_uncp_{contrast_label}"] = unc_p
+                results[f"stat_fdrp_{contrast_label}"] = fdr_p
+                results[f"stat_fwep_{contrast_label}"] = fwe_p
 
-            results[f"{contrast_label}_observed_stat"] = true_stats
+            results[f"stat_{contrast_label}"] = true_stats
 
     if correct_across_contrasts and permute and not f_only:
         if two_tailed:
@@ -313,7 +313,7 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
 
         for i in range(n_contrasts):
             contrast_label = f"c{i+1}"
-            observed_values = results[f"{contrast_label}_observed_stat"]
+            observed_values = results[f"stat_{contrast_label}"]
 
             # Apply the global max-stat distribution for FWE correction
             if accel_tail:
@@ -325,7 +325,7 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
                     cfwe_p = (np.sum(global_max_stat_dist[None, :] >= observed_values[:, None], axis=1) + 1.0) / (n_permutations + 1.0)
 
             # Store corrected p-values
-            results[f"{contrast_label}_cfwe_p"] = cfwe_p
+            results[f"stat_cfwep_{contrast_label}"] = cfwe_p
 
     # --- F-Test Permutations ---
     if perform_f_test:
@@ -393,10 +393,10 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
                 fwe_p_f = (np.sum(max_stat_dist_f[None, :] >= true_stats_f[:, None], axis=1) + 1.0) / (n_permutations + 1.0)
 
             # Store F-test results
-            results["f_unc_p"] = unc_p_f
-            results["f_fdr_p"] = fdr_p_f
-            results["f_fwe_p"] = fwe_p_f
-        results["f_observed_stat"] = true_stats_f
+            results["stat_uncp_f"] = unc_p_f
+            results["stat_fdrp_f"] = fdr_p_f
+            results["stat_fwep_f"] = fwe_p_f
+        results["stat_f"] = true_stats_f
 
     if not results:
          raise RuntimeError("No results were generated. Check f_only and contrast settings.")
@@ -515,7 +515,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
             print("Working on contrast %d/%d" % (contrast_idx + 1, n_contrasts))
             contrast_vector = np.atleast_1d(np.squeeze(original_contrast[contrast_idx, :]))
             contrast_label = f"c{contrast_idx+1}"
-            observed_stats = observed_results[f"{contrast_label}_observed_stat"]
+            observed_stats = observed_results[f"stat_{contrast_label}"]
 
             if tfce:
                 tfce_manager = TfceStatsManager(observed_stats, load_nifti_if_not_already_nifti(mask_img), two_tailed=two_tailed)
@@ -534,7 +534,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                 on_permute_callback=on_permute_callback_final
             )
 
-            unc_p, fdr_p, fwe_p = perm_results.c1_unc_p, perm_results.c1_fdr_p, perm_results.c1_fwe_p
+            unc_p, fdr_p, fwe_p = perm_results.stat_uncp_c1, perm_results.stat_fdrp_c1, perm_results.stat_fwep_c1
 
             if tfce:
                 unc_p_tfce, fdr_p_tfce, fwe_p_tfce = tfce_manager.finalize(n_permutations, accel_tail=accel_tail)
@@ -557,24 +557,25 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                     fdr_p_tfce = -np.log10(fdr_p_tfce)
                     fwe_p_tfce = -np.log10(fwe_p_tfce)
 
-            results[f"{contrast_label}_unc_p_map"] = masker.inverse_transform(unc_p)
-            results[f"{contrast_label}_fdr_p_map"] = masker.inverse_transform(fdr_p)
-            results[f"{contrast_label}_fwe_p_map"] = masker.inverse_transform(fwe_p)
-            results[f"{contrast_label}_observed_map"] = masker.inverse_transform(observed_stats)
+            results[f"vox_stat_uncp_{contrast_label}"] = masker.inverse_transform(unc_p)
+            results[f"vox_stat_fdrp_{contrast_label}"] = masker.inverse_transform(fdr_p)
+            results[f"vox_stat_fwep_{contrast_label}"] = masker.inverse_transform(fwe_p)
+            results[f"vox_stat_{contrast_label}"] = masker.inverse_transform(observed_stats)
                 
             # Step Four: If tfce is desired, finalize and save the tfce maps
             if tfce:
-                results[f"{contrast_label}_unc_p_tfce_map"] = masker.inverse_transform(unc_p_tfce)
-                results[f"{contrast_label}_fdr_p_tfce_map"] = masker.inverse_transform(fdr_p_tfce)
-                results[f"{contrast_label}_fwe_p_tfce_map"] = masker.inverse_transform(fwe_p_tfce)
-                results[f"{contrast_label}_observed_tfce_map"] = masker.inverse_transform(tfce_manager.true_stats_tfce)
+                results[f"vox_tfce_stat_uncp_{contrast_label}"] = masker.inverse_transform(unc_p_tfce)
+                results[f"vox_tfce_stat_fdrp_{contrast_label}"] = masker.inverse_transform(fdr_p_tfce)
+                results[f"vox_tfce_stat_fwep_{contrast_label}"] = masker.inverse_transform(fwe_p_tfce)
+                results[f"vox_tfce_stat_{contrast_label}"] = masker.inverse_transform(tfce_manager.true_stats_tfce)
 
+            results[f"max_stat_dist_{contrast_label}"] = perm_results.max_stat_dist_c1
+            if tfce:
+                results[f"tfce_max_stat_dist_{contrast_label}"] = tfce_manager.max_stat_dist_tfce
             if correct_across_contrasts and n_contrasts > 1:
-                global_max_stat_dist.append(perm_results.c1_max_stat_dist)
-                results[f"{contrast_label}_max_stat_dist"] = perm_results.c1_max_stat_dist
+                global_max_stat_dist.append(perm_results.max_stat_dist_c1)
                 if tfce:
                     global_max_stat_dist_tfce.append(tfce_manager.max_stat_dist_tfce)
-                    results[f"{contrast_label}_max_stat_dist_tfce"] = tfce_manager.max_stat_dist_tfce
 
     if correct_across_contrasts and n_contrasts > 1 and not f_only:
         if two_tailed:
@@ -588,11 +589,11 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
 
         results["global_max_stat_dist"] = global_max_stat_dist
         if tfce:
-            results["global_max_stat_dist_tfce"] = global_max_stat_dist_tfce
+            results["tfce_global_max_stat_dist"] = global_max_stat_dist_tfce
         
         for contrast_idx in range(n_contrasts):
             contrast_label = f"c{contrast_idx+1}"
-            observed_values = np.squeeze(masker.transform(results[f"{contrast_label}_observed_map"]))
+            observed_values = np.squeeze(masker.transform(results[f"vox_stat_{contrast_label}"]))
 
             if accel_tail:
                 cfwe_p = compute_p_values_accel_tail(observed_values, global_max_stat_dist, two_tailed=two_tailed)
@@ -608,10 +609,10 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                 cfwe_p = -np.log10(cfwe_p)
 
             # Store corrected p-values
-            results[f"{contrast_label}_cfwe_p_map"] = masker.inverse_transform(cfwe_p)
+            results[f"vox_stat_cfwep_{contrast_label}"] = masker.inverse_transform(cfwe_p)
 
             if tfce:
-                observed_values_tfce = np.squeeze(masker.transform(results[f"{contrast_label}_observed_tfce_map"]))
+                observed_values_tfce = np.squeeze(masker.transform(results[f"vox_tfce_stat_{contrast_label}"]))
                 if accel_tail:
                     cfwe_p_tfce = compute_p_values_accel_tail(observed_values_tfce, global_max_stat_dist_tfce, two_tailed=two_tailed)
                 else:
@@ -624,13 +625,13 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                 elif save_neglog10p:
                     cfwe_p_tfce = -np.log10(cfwe_p_tfce)
 
-                results[f"{contrast_label}_cfwe_tfce_p_map"] = masker.inverse_transform(cfwe_p_tfce)
+                results[f"vox_tfce_stat_cfwep_{contrast_label}"] = masker.inverse_transform(cfwe_p_tfce)
 
     if perform_f_test:
         print("Working on F-test")
         f_contrast = np.atleast_1d(original_contrast[np.atleast_1d(np.squeeze(f_contrast_indices).astype(bool)), :])
         f_contrast_label = "f"
-        observed_stats_f = observed_results[f"{f_contrast_label}_observed_stat"]
+        observed_stats_f = observed_results[f"stat_f"]
 
         if tfce:
             tfce_manager = TfceStatsManager(observed_stats_f, load_nifti_if_not_already_nifti(mask_img), two_tailed=two_tailed)
@@ -650,8 +651,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
             f_stat_function=f_stat_function, f_contrast_indices=f_contrast_indices,f_only=True,
             on_permute_callback=on_permute_callback_final
         )
-
-        unc_p_f, fdr_p_f, fwe_p_f = perm_results_f.f_unc_p, perm_results_f.f_fdr_p, perm_results_f.f_fwe_p
+        unc_p_f, fdr_p_f, fwe_p_f = perm_results_f.stat_uncp_f, perm_results_f.stat_fdrp_f, perm_results_f.stat_fwep_f
         if tfce:
             unc_p_tfce_f, fdr_p_tfce_f, fwe_p_tfce_f = tfce_manager.finalize(n_permutations, accel_tail=accel_tail)
 
@@ -673,16 +673,16 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                 fdr_p_tfce_f = -np.log10(fdr_p_tfce_f)
                 fwe_p_tfce_f = -np.log10(fwe_p_tfce_f)
 
-        results[f"{f_contrast_label}_unc_p_map"] = masker.inverse_transform(unc_p_f)
-        results[f"{f_contrast_label}_fdr_p_map"] = masker.inverse_transform(fdr_p_f)
-        results[f"{f_contrast_label}_fwe_p_map"] = masker.inverse_transform(fwe_p_f)
-        results[f"{f_contrast_label}_observed_map"] = masker.inverse_transform(observed_stats_f)
+        results[f"vox_stat_uncp_{f_contrast_label}"] = masker.inverse_transform(unc_p_f)
+        results[f"vox_stat_fdrp_{f_contrast_label}"] = masker.inverse_transform(fdr_p_f)
+        results[f"vox_stat_fwep_{f_contrast_label}"] = masker.inverse_transform(fwe_p_f)
+        results[f"vox_stat_{f_contrast_label}"] = masker.inverse_transform(observed_stats_f)
 
         if tfce:
-            results[f"{f_contrast_label}_unc_p_tfce_map"] = masker.inverse_transform(unc_p_tfce_f)
-            results[f"{f_contrast_label}_fdr_p_tfce_map"] = masker.inverse_transform(fdr_p_tfce_f)
-            results[f"{f_contrast_label}_fwe_p_tfce_map"] = masker.inverse_transform(fwe_p_tfce_f)
-            results[f"{f_contrast_label}_observed_tfce_map"] = masker.inverse_transform(tfce_manager.true_stats_tfce)
+            results[f"vox_tfce_stat_uncp_{f_contrast_label}"] = masker.inverse_transform(unc_p_tfce_f)
+            results[f"vox_tfce_stat_fdrp_{f_contrast_label}"] = masker.inverse_transform(fdr_p_tfce_f)
+            results[f"vox_tfce_stat_fwep_{f_contrast_label}"] = masker.inverse_transform(fwe_p_tfce_f)
+            results[f"vox_tfce_stat_{f_contrast_label}"] = masker.inverse_transform(tfce_manager.true_stats_tfce)
 
     return results
 
@@ -1882,11 +1882,21 @@ class SavePermutationManager:
     def update(self, permuted_stats, perm_idx, contrast_idx, *args, **kwargs):
         """Updates the manager with new permutation results."""
         contrast_label = f"c{contrast_idx+1}"
+        # pad to 5 digits, e.g. 00001, 01234, 12345
+        perm_label = f"perm{perm_idx+1:05d}"
+
         if self.masker is not None:
             permuted_stats_img = self.masker.inverse_transform(permuted_stats)
-            filename = os.path.join(self.output_dir, f"{self.prefix}{contrast_label}_perm{perm_idx+1}.nii.gz")
+            filename = os.path.join(
+                self.output_dir,
+                f"{self.prefix}{contrast_label}_{perm_label}.nii.gz"
+            )
             permuted_stats_img.to_filename(filename)
         else:
-            filename = os.path.join(self.output_dir, f"{self.prefix}{contrast_label}_perm{perm_idx+1}.npy")
+            filename = os.path.join(
+                self.output_dir,
+                f"{self.prefix}{contrast_label}_{perm_label}.npy"
+            )
             np.save(filename, permuted_stats)
+
 
