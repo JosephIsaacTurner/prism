@@ -1090,7 +1090,7 @@ class TfceStatsManager:
             contrast_label = f"c{contrast_idx + 1}"
 
         # Compute the TFCE-transformed statistics
-        true_stats_tfce = apply_tfce(self.masker.inverse_transform(true_stats)).get_fdata()
+        true_stats_tfce = apply_tfce(self.masker.inverse_transform(true_stats), two_tailed=self.two_tailed).get_fdata()
         true_stats_tfce = true_stats_tfce[self.mask_img.get_fdata() != 0]
         self.results[f"tfce_stat_{contrast_label}"] = true_stats_tfce
         self.true_stats_tfce[f"tfce_stat_{contrast_label}"] = true_stats_tfce
@@ -1103,7 +1103,7 @@ class TfceStatsManager:
             contrast_label = f"c{contrast_idx + 1}"
         
         # Transform the permuted stats with TFCE
-        permuted_stats_tfce = apply_tfce(self.masker.inverse_transform(permuted_stats)).get_fdata()
+        permuted_stats_tfce = apply_tfce(self.masker.inverse_transform(permuted_stats), two_tailed=self.two_tailed).get_fdata()
         permuted_stats_tfce = permuted_stats_tfce[self.mask_img.get_fdata() != 0]
         
         # On the first iteration, initialize state arrays/scalars
