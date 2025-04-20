@@ -13,7 +13,7 @@ from sklearn.utils import Bunch
 import os
 
 
-def permutation_analysis(data, design, contrast, stat_function='auto', n_permutations=1000, random_state=42, two_tailed=True, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False, accel_tail=True, demean=True, f_stat_function='auto', f_contrast_indices=None, f_only=False, correct_across_contrasts=False, on_permute_callback=None, permute=True, save_fn=None, save_1minusp=False, save_neglog10p=False):
+def permutation_analysis(data, design, contrast, stat_function='auto', n_permutations=1000, random_state=42, two_tailed=True, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False, accel_tail=False, demean=True, f_stat_function='auto', f_contrast_indices=None, f_only=False, correct_across_contrasts=False, on_permute_callback=None, permute=True, save_fn=None, save_1minusp=False, save_neglog10p=False):
     """
     Performs permutation testing on the provided data using a specified statistical function.
 
@@ -436,7 +436,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                                           stat_function='auto', n_permutations=1000, random_state=42,
                                           two_tailed=True, exchangeability_matrix=None, vg_auto=False, vg_vector=None,
                                           within=True, whole=False, flip_signs=False,
-                                          accel_tail=True,
+                                          accel_tail=False,
                                           demean=True,
                                           f_stat_function='auto', f_contrast_indices=None, f_only=False,
                                           correct_across_contrasts=False,
@@ -549,7 +549,6 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                 # mark *before* processing so we never recurse here
                 if tfce_key in tfce_manager.true_stats_tfce:
                     continue
-                tfce_manager.true_stats_tfce.add(tfce_key)
 
                 try:
                     tfce_manager.process_true_stats(value, contrast_idx)
@@ -563,7 +562,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
     def on_permute_callback_wrapper(permuted_stats, permutation_idx, contrast_idx, two_tailed, *args, **kwargs):
         """Handle updating the tfce manager with the permuted stats."""
         if tfce:
-            tfce_manager.update(permuted_stats, permutation_idx)
+            tfce_manager.update(permuted_stats, permutation_idx, contrast_idx)
         if on_permute_callback is not None:
             on_permute_callback(permuted_stats, permutation_idx, contrast_idx, two_tailed, *args, **kwargs)
 
@@ -574,6 +573,13 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
         on_permute_callback=on_permute_callback_wrapper, save_1minusp=save_1minusp, save_neglog10p=save_neglog10p,
         save_fn=save_fn_wrapper,
     )
+
+    tfce_results = tfce_manager.finalize()
+
+    if tfce:
+        results.update(tfce_results)
+
+    save_fn_wrapper(results)
 
     return results
 
@@ -1077,7 +1083,7 @@ class TfceStatsManager:
         self.true_stats_tfce = Bunch()
         self.results = Bunch()
 
-    def process_true_stats(true_stats, contrast_idx):
+    def process_true_stats(self, true_stats, contrast_idx):
         if contrast_idx is None or contrast_idx == -1:
             contrast_label = "f"
         else:
@@ -1086,6 +1092,7 @@ class TfceStatsManager:
         # Compute the TFCE-transformed statistics
         true_stats_tfce = apply_tfce(self.masker.inverse_transform(true_stats)).get_fdata()
         true_stats_tfce = true_stats_tfce[self.mask_img.get_fdata() != 0]
+        self.results[f"tfce_stat_{contrast_label}"] = true_stats_tfce
         self.true_stats_tfce[f"tfce_stat_{contrast_label}"] = true_stats_tfce
 
     def update(self, permuted_stats, permutation_idx, contrast_idx=None):
@@ -1104,7 +1111,7 @@ class TfceStatsManager:
             self.exceedances_tfce[f"tfce_stat_{contrast_label}"] = np.zeros_like(permuted_stats_tfce)
             if self.two_tailed:
                 self.exceedances_tfce[f"tfce_stat_{contrast_label}"] += (np.abs(permuted_stats_tfce) >= np.abs(self.true_stats_tfce[f"tfce_stat_{contrast_label}"]))
-                self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"] = np.max.abs(permuted_stats_tfce)
+                self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"] = np.max(np.abs(permuted_stats_tfce))
             else:
                 self.exceedances_tfce[f"tfce_stat_{contrast_label}"] += (permuted_stats_tfce >= self.true_stats_tfce[f"tfce_stat_{contrast_label}"])
                 self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"] = np.max(permuted_stats_tfce)
@@ -1138,15 +1145,15 @@ class TfceStatsManager:
             tfce_stat_uncp = (exceedances + 1) / (self.n_permutations + 1)
             _, tfce_stat_fdrp = fdrcorrection(tfce_stat_uncp)
 
-            if accel_tail:
+            if self.accel_tail:
                 tfce_stat_fwep = compute_p_values_accel_tail(self.true_stats_tfce[f"tfce_stat_{contrast_label}"],
                                                         self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"],
                                                         two_tailed=self.two_tailed)
             else:
                 if self.two_tailed:
-                    tfce_stat_fwep = (np.sum(self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"] >= np.abs(self.true_stats_tfce[f"tfce_stat_{contrast_label}"]), axis=1) + 1) / (self.n_permutations + 1)
+                    tfce_stat_fwep = (np.sum(self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"][None, :] >= np.abs(self.true_stats_tfce[f"tfce_stat_{contrast_label}"][:, None]), axis=1) + 1) / (self.n_permutations + 1)
                 else:
-                    tfce_stat_fwep = (np.sum(self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"] >= self.true_stats_tfce[f"tfce_stat_{contrast_label}"], axis=1) + 1) / (self.n_permutations + 1)
+                    tfce_stat_fwep = (np.sum(self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"][None, :] >= self.true_stats_tfce[f"tfce_stat_{contrast_label}"][:, None], axis=1) + 1) / (self.n_permutations + 1)
 
             # Store the results in the Bunch object
             self.results[f"tfce_stat_uncp_{contrast_label}"] = tfce_stat_uncp

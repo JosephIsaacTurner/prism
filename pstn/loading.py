@@ -172,11 +172,24 @@ def is_nifti_like(data):
     Check if the input data is Nifti-like.
     Parameters:
     - data: object to check
-    
+
     Returns:
-    - bool: True if data is Nifti-like, False otherwise
+    - bool: True if data is Nifti-like (a Nifti1Image, a .nii/.nii.gz path,
+            or a list/tuple of those), False otherwise
     """
-    return isinstance(data, nib.Nifti1Image) or (isinstance(data, str) and (data.endswith('.nii') or data.endswith('.nii.gz')))
+    # single image
+    if isinstance(data, nib.Nifti1Image):
+        return True
+
+    # single filename
+    if isinstance(data, str) and data.endswith(('.nii', '.nii.gz')):
+        return True
+
+    # list/tuple of images or filenames
+    if isinstance(data, (list, tuple)):
+        return all(is_nifti_like(item) for item in data)
+
+    return False
 
 class Dataset:
     """
@@ -491,7 +504,7 @@ class ResultSaver:
                 and val.size == self.n_elements
             ):
                 img = self.masker.inverse_transform(val)
-                save_key = f"vox_{renamed_key}"
+                save_key = f"vox_{renamed_key}" if "tfce" not in key else renamed_key
                 ext = ".nii.gz"
                 to_save = img
             else:

@@ -68,11 +68,11 @@ def setup_parser():
                         help='Enable TFCE inference')
     parser.add_argument('-fdr', "--fdr", action='store_true', default=True,
                         help='Produce FDR-adjusted p-values')
-    parser.add_argument('-save1-p', "--save1-p", action='store_true', default=None,
+    parser.add_argument('-save1-p', "--save1_p", action='store_true', default=False,
                     help='Save (1-p) instead of actual p values (default if no format specified)')
     parser.add_argument('-logp', "--logp", action='store_true', default=False,
                     help='Save -log10(p) instead of actual p values')
-    parser.add_argument('-twotail', "--two-tailed", action='store_true', default=True,
+    parser.add_argument('-twotail', "--two-tailed", action='store_true', default=False,
                         help='Do two-tailed voxelwise tests')
     parser.add_argument('-accel', "--accel", nargs='?', const=True, default=False,
                         help='Enable acceleration. Can accept "tail" as a value')
@@ -152,19 +152,11 @@ def validate_args(args):
         print("Acceleration enabled with default method: tail")
 
     # Handle p-value format options
-    if args.save1_p is None:
-        # User didn't explicitly specify save1_p
-        if args.logp:
-            # Only logp was specified, use that
-            args.save1_p = False
-        else:
-            # Neither was specified, default to save1_p
-            args.save1_p = True
-    elif args.save1_p and args.logp:
-        # Both were explicitly specified
-        args.logp = False
+    if args.save1_p is True and args.logp is True:
+        # Both were explicitly specified -- but let's not let the user do that.
+        # We'll print a warning and set logp to be False and keep 1_p to be True
         print("Warning: Both -save1-p and -logp were specified. Using -save1-p.")
-
+        args.logp = False
 
     for arg in NON_IMPLEMENTED_ARGS:
         if getattr(args, arg[1:], False):
@@ -229,11 +221,11 @@ def main():
     else:
         f_contrast_indices = None
 
-    input_is_nifti_like = is_nifti_like(data[0])
+    input_is_nifti_like = is_nifti_like(data)
     n_contrasts = contrast.shape[0] if contrast.ndim > 1 else 1
 
     if input_is_nifti_like and args.mask is None:
-        masker = NiftiMasker().fit(data[0])
+        masker = NiftiMasker().fit(data)
         mask_img = masker.mask_img_
     elif input_is_nifti_like and args.mask is not None:
         mask_img = args.mask
