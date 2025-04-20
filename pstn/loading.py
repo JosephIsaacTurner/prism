@@ -372,7 +372,8 @@ def prepare_glm_data(Y, X, C, f_contrast_indices=None):
     Y_d = Y - Y.mean(axis=0)
 
     # ——— 3. Trim constant columns from X ———
-    const_mask = X.ptp(axis=0) == 0
+    const_mask = np.ptp(X, axis=0) == 0
+
     if const_mask.any():
         removed = np.nonzero(const_mask)[0].tolist()
         warnings.warn(f"Removing constant X cols at indices {removed}", UserWarning)

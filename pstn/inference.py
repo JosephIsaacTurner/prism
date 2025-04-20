@@ -513,6 +513,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
         masker = NiftiMasker(mask_img=mask_img)
     data = masker.fit_transform(imgs)
     mask_img = masker.mask_img_
+    n_contrasts = np.atleast_2d(contrast).shape[0]
 
     if tfce:
         tfce_manager = TfceStatsManager(n_permutations=n_permutations, 

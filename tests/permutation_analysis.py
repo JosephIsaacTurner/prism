@@ -109,7 +109,7 @@ class TestPermutationAnalysis(unittest.TestCase):
             "stat_function": 'auto',
         })
         results = permutation_analysis(**params)
-        unc_p, fdr_p, fwe_p = results.c1_unc_p, results.c1_fdr_p, results.c1_fwe_p
+        unc_p, fdr_p, fwe_p = results.stat_uncp_c1, results.stat_fdrp_c1, results.stat_fwep_c1
         self._check_outputs(unc_p, fdr_p, fwe_p, "Case 1 (1D t-stat)")
 
     def test_case2_pseudo_1d_contrast_t_stat(self):
@@ -121,7 +121,7 @@ class TestPermutationAnalysis(unittest.TestCase):
         })
         # Expect this to work like the 1D case
         results = permutation_analysis(**params)
-        unc_p, fdr_p, fwe_p = results.c1_unc_p, results.c1_fdr_p, results.c1_fwe_p
+        unc_p, fdr_p, fwe_p = results.stat_uncp_c1, results.stat_fdrp_c1, results.stat_fwep_c1
         self._check_outputs(unc_p, fdr_p, fwe_p, "Case 2 (Pseudo-1D t-stat)")
 
         # Optional: Compare results to case 1 (should be identical or very close)
@@ -143,7 +143,7 @@ class TestPermutationAnalysis(unittest.TestCase):
             "f_only": True
         })
         results = permutation_analysis(**params)
-        unc_p, fdr_p, fwe_p = results.f_unc_p, results.f_fdr_p, results.f_fwe_p
+        unc_p, fdr_p, fwe_p = results.stat_uncp_f, results.stat_fdrp_f, results.stat_fwep_f
         self._check_outputs(unc_p, fdr_p, fwe_p, "Case 3 (2D F-stat)")
 
     def test_case4_1d_contrast_aspinwelch_exchangeability(self):
@@ -157,7 +157,7 @@ class TestPermutationAnalysis(unittest.TestCase):
             "vg_auto": True
         })
         results = permutation_analysis(**params)
-        unc_p, fdr_p, fwe_p = results.c1_unc_p, results.c1_fdr_p, results.c1_fwe_p
+        unc_p, fdr_p, fwe_p = results.stat_uncp_c1, results.stat_fdrp_c1, results.stat_fwep_c1
         self._check_outputs(unc_p, fdr_p, fwe_p, "Case 4 (1D Aspin-Welch Exch.)")
 
     def test_case5_2d_contrast_G_stat_exchangeability(self):
@@ -174,7 +174,7 @@ class TestPermutationAnalysis(unittest.TestCase):
             "f_only": True
         })
         results = permutation_analysis(**params)
-        unc_p, fdr_p, fwe_p = results.f_unc_p, results.f_fdr_p, results.f_fwe_p
+        unc_p, fdr_p, fwe_p = results.stat_uncp_f, results.stat_fdrp_f, results.stat_fwep_f
         self._check_outputs(unc_p, fdr_p, fwe_p, "Case 5 (2D G-stat Exch.)")
 
     # --- Error Cases ---
