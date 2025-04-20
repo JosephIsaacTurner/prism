@@ -5,8 +5,8 @@ import re
 import numpy as np
 import nibabel as nib
 from nilearn.maskers import NiftiMasker
-from .loading import load_data, is_nifti_like
-from .inference import permutation_analysis, permutation_analysis_volumetric_dense, SavePermutationManager
+from .loading import load_data, is_nifti_like, ResultSaver
+from .inference import permutation_analysis, permutation_analysis_volumetric_dense
 from .stats import pearson_r, r_squared
 
 # TODO:
@@ -229,38 +229,42 @@ def main():
     else:
         f_contrast_indices = None
 
-    stat_type = 't'
     input_is_nifti_like = is_nifti_like(data[0])
+    n_contrasts = contrast.shape[0] if contrast.ndim > 1 else 1
+
+    if input_is_nifti_like and args.mask is None:
+        masker = NiftiMasker().fit(data[0])
+        mask_img = masker.mask_img_
+    elif input_is_nifti_like and args.mask is not None:
+        mask_img = args.mask
+    else:
+        mask_img = None
 
     output_prefix = get_output_path(args.output)
-    if args.save_permutations:
-        if input_is_nifti_like and args.mask is None:
-            masker = NiftiMasker().fit(data[0])
-            mask_img = masker.mask_img_
-        else:
-            mask_img = args.mask
 
-        output_dir = os.path.join(os.path.dirname(output_prefix), "permutations")
-        os.makedirs(output_dir, exist_ok=True)
-        save_permutation_manager = SavePermutationManager(
-            output_dir=output_dir,
-            mask_img=mask_img,
-            prefix=os.path.basename(output_prefix) if os.path.basename(output_prefix) else ""
-        )
-        on_permute_callback = save_permutation_manager.update
+    stat_function = 'auto' if not args.pearson_r else pearson_r
+    f_stat_function = 'auto' if not args.pearson_r else r_squared
+
+    results_saver = ResultSaver(
+        prefix=output_prefix,
+        variance_groups=args.variance_groups,
+        stat_function=stat_function,
+        f_stat_function=f_stat_function,
+        n_contrasts=n_contrasts,
+        mask_img = mask_img,
+        save_permutations=args.save_permutations,
+    )
+
+    if args.save_permutations:
+        on_permute_callback = results_saver.save_permutation
     else:
         on_permute_callback = None
-
 
     if input_is_nifti_like:
         print("Input data is NIfTI-like. Using volumetric dense analysis.")
         # Verify that we got a mask img
         if args.mask is None:
             print ("Warning: Mask image not provided. We'll try to move forward, but behavior may be unpredictable.")
-        mask_img = args.mask
-
-        stat_function = 'auto' if not args.pearson_r else pearson_r
-        f_stat_function = 'auto' if not args.pearson_r else r_squared
 
         results = permutation_analysis_volumetric_dense(
             imgs=data,
@@ -287,55 +291,15 @@ def main():
             tfce=args.tfce,
             save_1minusp=args.save1_p,
             save_neglog10p=args.logp,
+            save_fn=results_saver.save_results
         )
-
-        for key, value in results.items():
-            # If its not an F test (only testing single contrasts):
-            if not key.endswith("f"):
-                # Case if we assume equal variance and we are using default functions for contrast testing
-                if stat_function == 'auto' and args.variance_groups is None:
-                    # This means we are doing a t test.
-                    if (re.search(r"stat_.*_c\d+", key)) or (re.search(r"stat_c\d+", key)):
-                        key = key.replace("stat", "tstat")
-                # Case if we have unequal variance between groups and we are using default functions for contrast testing
-                elif stat_function == 'auto' and args.variance_groups is not None:
-                    # This means we are doing an aspin_welch_v test.
-                    if (re.search(r"stat_.*_c\d+", key)) or (re.search(r"stat_c\d+", key)):
-                        key = key.replace("stat", "vstat")
-                # Case if stat_function == pearson_r
-                elif stat_function == pearson_r:
-                    # This means we are doing a pearson r test.
-                    if (re.search(r"stat_.*_c\d+", key)) or (re.search(r"stat_c\d+", key)):
-                        key = key.replace("stat", "rstat")
-            # If it IS an F test (testing multiple contrasts):
-            else:
-                # Case if we assume equal variance and we are using default functions for f testing
-                if f_stat_function == 'auto' and args.variance_groups is None:
-                    # In this case, we are actually doing an F test.
-                    if (re.search(r"stat_.*_f", key)) or key.endswith("stat_f"):
-                        key = key.replace("stat", "fstat")
-                # Case if we have unequal variance between groups and we are using default functions for f testing
-                elif f_stat_function == 'auto' and args.variance_groups is not None:
-                    # In this case, we are actually doing a generalized f test, which is a G statistic.
-                    if (re.search(r"stat_.*f", key)) or key.endswith("stat_f"):
-                        key = key.replace("stat", "gstat")
-                # Case if we f_stat_function == r_squared
-                elif f_stat_function == r_squared:
-                    # This means we are doing a r_squared test.
-                    if (re.search(r"stat_.*_f", key)) or key.endswith("stat_f"):
-                        key = key.replace("stat", "rsqstat")
-
-            if "vox_" in key:
-                nib.save(value, f"{output_prefix}_{key}.nii.gz")
-            else:
-                np.save(f"{output_prefix}_{key}.npy", value)
 
     else:
         results = permutation_analysis(
             data=data,
             design=design,
             contrast=contrast,
-            stat_function='auto' if not args.pearson_r else pearson_r,
+            stat_function=stat_function,
             n_permutations=args.n_permutations,
             random_state=args.random_state,
             two_tailed=args.two_tailed,
@@ -347,22 +311,16 @@ def main():
             flip_signs=args.flip_signs,
             accel_tail=args.accel,
             demean=args.demean,
-            f_stat_function='auto' if not args.pearson_r else r_squared,
+            f_stat_function=f_stat_function,
             f_contrast_indices=f_contrast_indices,
             f_only=args.f_only,
             correct_across_contrasts=args.correct_across_contrasts,
             on_permute_callback=on_permute_callback,
+            save_1minusp=args.save1_p,
+            save_neglog10p=args.logp,
+            save_fn=results_saver.save_results
         )
 
-        for key, value in results.items():
-            if "_p" in key:
-                if args.save1_p:
-                    value = 1 - value
-
-                elif args.logp:
-                    value = -np.log10(value)
-
-            np.save(f"{output_prefix}_dat_{key}.npy", value)
 
     print("Analysis complete. Results saved to output files.")
        

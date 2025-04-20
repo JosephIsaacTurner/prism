@@ -35,7 +35,7 @@ def t(Y, X, C):
     0/0→0, k/0→±∞.
     """
     n, p = Y.shape
-    C = jnp.atleast_1d(jnp.squeeze(C))
+    C = jnp.ravel(C)
     k = X.shape[1]
     # fit GLM
     XtX_inv = pinv(X.T @ X)
@@ -91,7 +91,7 @@ def aspin_welch_v(Y, X, C, groups, J_max):
     0/0 → 0, k/0 → ±∞.
     """
     n, p = Y.shape
-    C = jnp.atleast_1d(jnp.squeeze(C))
+    C = jnp.ravel(C)
     # fit GLM
     XtX_inv = pinv(X.T @ X)
     beta = XtX_inv @ X.T @ Y
@@ -272,7 +272,7 @@ def pearson_r(Y, X, C, *args, **kwargs):
     r in [−1, 1];  0/0→0, ±/0→±∞.
     """
     n, p = Y.shape
-    C = jnp.atleast_1d(jnp.squeeze(C))
+    C = jnp.ravel(C)
     k = X.shape[1]
     # fit GLM
     XtX_inv = pinv(X.T @ X)
@@ -320,7 +320,7 @@ def r_squared(Y, X, C, *args, **kwargs):
     R² in [0, 1];  0/0→0.
     """
     n, p = Y.shape
-    C = jnp.atleast_1d(jnp.squeeze(C))
+    C = jnp.ravel(C)
     k = X.shape[1]
     # fit GLM
     XtX_inv = pinv(X.T @ X)

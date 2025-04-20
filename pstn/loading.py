@@ -2,6 +2,7 @@ from nilearn.mass_univariate._utils import calculate_tfce
 from scipy.ndimage import generate_binary_structure
 from nilearn.maskers import NiftiMasker
 import numpy as np
+import jax.numpy as jnp
 import os
 import nibabel as nib
 from scipy.ndimage import gaussian_filter
@@ -75,7 +76,7 @@ def generate_null_data_vector(mask_img, random_state=None):
     m1, m2 = np.zeros(data.shape), np.zeros(data.shape); m1[mask], m2[mask] = 1 - norm, norm  # soft masks for center/periphery
     data = m1 * gaussian_filter(data, sigma=3) + m2 * gaussian_filter(data, sigma=7)  # blend two smoothing levels
     data[data != 0] = zscore(data[data != 0])  # z-score the data
-    return np.squeeze(data[data != 0])
+    return np.ravel(data[data != 0])
 
 def generate_null_brain_map(mask_img, random_state=None):
     """
@@ -118,7 +119,7 @@ def get_data_vector_and_coord_matrix(img, mask_img):
     else:
         mask_img = nib.load(mask_img) if type(mask_img) == str else mask_img
         masker = NiftiMasker(mask_img=mask_img).fit()
-        img = masker.inverse_transform(np.squeeze(masker.fit_transform(img)))
+        img = masker.inverse_transform(np.ravel(masker.fit_transform(img)))
     coords = np.indices(img.shape).reshape(3, -1).T
     coords = apply_affine(img.affine, coords) # Convert voxel coordinates to world coordinates (usually MNI coordinate)
     coords = coords[mask_img.get_fdata().flatten() != 0] # Remove data outside brain
@@ -410,3 +411,133 @@ def prepare_glm_data(Y, X, C, f_contrast_indices=None):
             warnings.warn("Not enough F-contrast components; setting f_d=None", UserWarning)
 
     return Y_d, X_d, C_d, f_d
+
+
+class ResultSaver:
+    def __init__(self, prefix, variance_groups=None,
+                 stat_function='auto', f_stat_function='auto', n_contrasts=1,
+                 mask_img=None,
+                 save_permutations=False,
+                 permutation_output_dir=None):
+        if not isinstance(prefix, str) or not prefix:
+            raise ValueError("`prefix` must be a non-empty string")
+        if not isinstance(n_contrasts, int) or n_contrasts < 1:
+            raise ValueError("`n_contrasts` must be a positive integer")
+
+        self.prefix = prefix
+        self.variance_groups = variance_groups
+        self.stat_fn = (stat_function
+                        if isinstance(stat_function, str)
+                        else getattr(stat_function, "__name__", "unknown"))
+        self.f_stat_fn = (f_stat_function
+                          if isinstance(f_stat_function, str)
+                          else getattr(f_stat_function, "__name__", "unknown"))
+
+        self.n_contrasts = n_contrasts
+        self.permutation_output_dir = permutation_output_dir if permutation_output_dir else os.path.join(os.path.dirname(prefix), "permutations")
+        
+        self.mask_img = mask_img
+        self.masker = NiftiMasker(mask_img).fit() if mask_img is not None else None
+        self.n_elements = getattr(self.masker, "n_elements_", None)
+
+        self.processed = set()
+
+        out_dir = os.path.dirname(prefix) or '.'
+        os.makedirs(out_dir, exist_ok=True)
+        self.output_dir = out_dir
+        self.base = os.path.basename(prefix)
+
+        if save_permutations:
+            os.makedirs(self.permutation_output_dir, exist_ok=True)
+
+    def _rename(self, key):
+        is_f = key.endswith(("_f", ".f"))
+        fn = self.f_stat_fn if is_f else self.stat_fn
+        use_groups = self.variance_groups is not None
+
+        if fn == 'auto':
+            tag = None
+            if is_f:
+                tag = 'gstat' if use_groups else 'fstat'
+            else:
+                tag = 'vstat' if use_groups else 'tstat'
+        elif fn == 'pearson_r':
+            tag = 'rstat'
+        elif fn == 'r_squared':
+            tag = 'rsqstat'
+        else:
+            tag = None
+        
+        if self.n_contrasts == 1:
+            # If only one contrast was tested, remove the contrast suffix
+            key = key.replace("_c1", "")
+
+        return key.replace("stat", tag) if tag and "stat" in key else key
+
+    def save_results(self, results):
+        if not hasattr(results, 'items'):
+            print("Warning: input not dict‑ or Bunch‑like; skipping")
+            return
+
+        for key, val in results.items():
+            if not isinstance(key, str) or key in self.processed:
+                continue
+
+            renamed_key = self._rename(key)
+            if (
+                self.masker
+                and (isinstance(val, np.ndarray) or isinstance(val, jnp.ndarray))
+                and val.size == self.n_elements
+            ):
+                img = self.masker.inverse_transform(val)
+                save_key = f"vox_{renamed_key}"
+                ext = ".nii.gz"
+                to_save = img
+            else:
+                save_key = renamed_key
+                ext = ".npy"
+                to_save = val
+
+            path = os.path.join(
+                self.output_dir, f"{self.base}_{save_key}{ext}"
+            )
+
+            try:
+                if ext == ".nii.gz":
+                    nib.save(to_save, path)
+                else:
+                    np.save(path, to_save)
+                self.processed.add(key)
+
+            except Exception as e:
+                print(f"Error saving '{key}': {e}")
+
+    def get_processed_keys(self):
+        return set(self.processed)
+
+    def clear_processed_keys(self):
+        self.processed.clear()
+
+    def save_permutation(self, permuted_stats, perm_idx, contrast_idx, *args, **kwargs):
+        """Updates the manager with new permutation results."""
+        if (contrast_idx is None or contrast_idx == -1) and self.n_contrasts > 1:
+            contrast_label = "_f"
+        else:
+            contrast_label = f"_c{contrast_idx+1}" if self.n_contrasts > 1 else ""
+        
+        # pad to 5 digits, e.g. 00001, 01234, 12345
+        perm_label = f"perm{perm_idx+1:05d}"
+
+        if self.masker is not None:
+            permuted_stats_img = self.masker.inverse_transform(np.ravel(permuted_stats))
+            filename = os.path.join(
+                self.permutation_output_dir,
+                f"{os.path.basename(self.prefix)}_{perm_label}{contrast_label}.nii.gz"
+            )
+            permuted_stats_img.to_filename(filename)
+        else:
+            filename = os.path.join(
+                self.permutation_output_dir,
+                f"{os.path.basename(self.prefix)}_{perm_label}{contrast_label}.npy"
+            )
+            np.save(filename, permuted_stats)
