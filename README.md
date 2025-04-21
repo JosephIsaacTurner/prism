@@ -1,10 +1,10 @@
 <p align="left">
-    <img src="assets/logo.svg" alt="PSTN Logo" width="700">
+    <img src="assets/logo.svg" alt="prism Logo" width="700">
 </p>
 
 ## Overview
 
-PSTN (**Permutational Statistical Toolbox for Neuroimaging**) is a Python package designed for performing **fast, efficient, and scalable** statistical analysis on neuroimaging data using **permutation-based methods**. It provides tools for running **second-level General Linear Models (GLMs)** and comparing statistical map similarity in a pythonic manner without relying on external software.
+prism (**Permutational Statistical Toolbox for Neuroimaging**) is a Python package designed for performing **fast, efficient, and scalable** statistical analysis on neuroimaging data using **permutation-based methods**. It provides tools for running **second-level General Linear Models (GLMs)** and comparing statistical map similarity in a pythonic manner without relying on external software.
 
 To read more about why this project is needed, see the [manuscript](manuscript/manuscript.md).
 
@@ -18,11 +18,11 @@ To read more about why this project is needed, see the [manuscript](manuscript/m
 
 ## Installation
 
-You can install PSTN using pip and git:
+You can install prism using pip and git:
 
 ```bash
 git clone https://github.com/josephisaacturner/pstn.git
-cd pstn
+cd prism
 pip install -e .
 ```
 
@@ -37,8 +37,8 @@ pip install jax-metal
 The project is organized as follows:
 
 ```
-pstn/
-├── pstn/              # Core Python package
+prism/
+├── prism/              # Core Python package
 │   ├── stats.py       # Statistical functions
 │   ├── inference.py   # Inference functions (hypothesis testing classes, etc.)
 │   ├── loading.py     # Functions to load data
@@ -60,8 +60,8 @@ For more details, see [`layout.md`](layout.md).
 
 ### Example: Running a Second-Level GLM
 ```python
-from pstn.inference import permutation_analysis
-from pstn.stats import welchs_t_glm
+from prism.inference import permutation_analysis
+from prism.stats import welchs_t_glm
 from nilearn.maskers import NiftiMasker
 
 # Random seed for reproducibility
@@ -105,4 +105,4 @@ We welcome contributions! If you want to contribute:
 
 ## License
 
-PSTN is open-source and available under the MIT License.
+prism is open-source and available under the MIT License.

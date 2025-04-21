@@ -1,14 +1,14 @@
 # Project Layout
 
-This document describes the structure of the `pstn` project.
+This document describes the structure of the `prism` project.
 
-## Root Directory (`pstn/`)
+## Root Directory (`prism/`)
 
 The root directory contains the main components of the project, including code, notebooks, tests, and essential project files.
 
 ```
-pstn/
-├── pstn/              # Core Python package
+prism/
+├── prism/              # Core Python package
 │   ├── stats.py       # Statistical functions
 │   ├── inference.py   # Inference functions (hypothesis testing classes, etc.)
 │   ├── loading.py     # Functions to load data
@@ -26,7 +26,7 @@ pstn/
 
 ## Directories:
 
-- **`pstn/`**: The core Python package containing all source code.
+- **`prism/`**: The core Python package containing all source code.
 - **`notebooks/`**: Jupyter notebooks for experimentation, documentation, and analysis.
 - **`tests/`**: Unit and integration tests for the package.
 
@@ -39,9 +39,9 @@ pstn/
 
 ---
 
-## Python Package (`pstn/pstn/`)
+## Python Package (`prism/prism/`)
 
-The core functionality of the project is implemented in the `pstn` package, which is structured as follows:
+The core functionality of the project is implemented in the `prism` package, which is structured as follows:
 
 ### Modules:
 
@@ -59,4 +59,4 @@ We **do not** include a `utils.py` file, as it is too vague and does not clearly
 
 ---
 
-This layout ensures modularity, clarity, and maintainability for the `pstn` project.
+This layout ensures modularity, clarity, and maintainability for the `prism` project.
