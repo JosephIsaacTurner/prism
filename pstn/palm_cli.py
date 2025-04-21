@@ -86,7 +86,7 @@ def setup_parser():
                         help='Save one statistic image per permutation')
     parser.add_argument('-seed', '--random_state', type=int, default=42,
                         help='Random seed for reproducibility')
-    parser.add_argument('-zstat', "--z_stat", action='store_true', default=False,
+    parser.add_argument('-zstat', "--zstat", action='store_true', default=False,
                         help='Save z-statistics instead of t-statistics')
     
     for arg in NON_IMPLEMENTED_ARGS:
@@ -285,7 +285,8 @@ def main():
             tfce=args.tfce,
             save_1minusp=args.save1_p,
             save_neglog10p=args.logp,
-            save_fn=results_saver.save_results
+            save_fn=results_saver.save_results,
+            zstat=args.zstat,
         )
 
     else:
@@ -312,7 +313,8 @@ def main():
             on_permute_callback=on_permute_callback,
             save_1minusp=args.save1_p,
             save_neglog10p=args.logp,
-            save_fn=results_saver.save_results
+            save_fn=results_saver.save_results,
+            zstat=args.zstat
         )
 
 

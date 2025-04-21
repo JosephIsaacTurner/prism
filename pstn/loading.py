@@ -407,7 +407,8 @@ class ResultSaver:
                  stat_function='auto', f_stat_function='auto', n_contrasts=1,
                  mask_img=None,
                  save_permutations=False,
-                 permutation_output_dir=None):
+                 permutation_output_dir=None,
+                 zstat=False):
         if not isinstance(prefix, str) or not prefix:
             raise ValueError("`prefix` must be a non-empty string")
         if not isinstance(n_contrasts, int) or n_contrasts < 1:
@@ -424,7 +425,8 @@ class ResultSaver:
 
         self.n_contrasts = n_contrasts
         self.permutation_output_dir = permutation_output_dir if permutation_output_dir else os.path.join(os.path.dirname(prefix), "permutations")
-        
+        self.zstat = zstat
+
         self.mask_img = mask_img
         self.masker = NiftiMasker(mask_img).fit() if mask_img is not None else None
         self.n_elements = getattr(self.masker, "n_elements_", None)
@@ -444,7 +446,9 @@ class ResultSaver:
         fn = self.f_stat_fn if is_f else self.stat_fn
         use_groups = self.variance_groups is not None
 
-        if fn == 'auto':
+        if self.zstat:
+            tag = 'zstat'
+        elif fn == 'auto':
             tag = None
             if is_f:
                 tag = 'gstat' if use_groups else 'fstat'

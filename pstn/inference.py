@@ -14,7 +14,7 @@ from sklearn.utils import Bunch
 import os
 
 
-def permutation_analysis(data, design, contrast, stat_function='auto', n_permutations=1000, random_state=42, two_tailed=True, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False, accel_tail=False, demean=True, f_stat_function='auto', f_contrast_indices=None, f_only=False, correct_across_contrasts=False, on_permute_callback=None, permute=True, save_fn=None, save_1minusp=False, save_neglog10p=False):
+def permutation_analysis(data, design, contrast, stat_function='auto', n_permutations=1000, random_state=42, two_tailed=True, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False, accel_tail=False, demean=True, f_stat_function='auto', f_contrast_indices=None, f_only=False, correct_across_contrasts=False, on_permute_callback=None, permute=True, save_fn=None, save_1minusp=False, save_neglog10p=False, zstat=False):
     """
     Performs permutation testing on the provided data using a specified statistical function.
 
@@ -445,7 +445,8 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                                           tfce=False,
                                           save_1minusp=True,
                                           save_neglog10p=False,
-                                          save_fn=None):
+                                          save_fn=None,
+                                          zstat=False):
     """
     Parameters
     ----------
@@ -1066,7 +1067,7 @@ def compute_p_values_accel_tail(observed, null_dist, two_tailed=True):
 
 
 class TfceStatsManager:
-    def __init__(self, n_permutations, mask_img, two_tailed=True, n_contrasts=1, save_1minusp=False, save_neglog10p=False, z_transform=False, correct_across_contrasts=False, accel_tail=False):
+    def __init__(self, n_permutations, mask_img, two_tailed=True, n_contrasts=1, save_1minusp=False, save_neglog10p=False, z_transform=False, correct_across_contrasts=False, accel_tail=False, zstat=False):
 
         self.n_permutations = n_permutations
         self.mask_img = mask_img
@@ -1078,6 +1079,7 @@ class TfceStatsManager:
         self.z_transform = z_transform
         self.correct_across_contrasts = correct_across_contrasts    
         self.accel_tail = accel_tail
+        self.zstat = zstat
 
         self.exceedances_tfce = Bunch()
         self.max_stat_dist_tfce = Bunch()
