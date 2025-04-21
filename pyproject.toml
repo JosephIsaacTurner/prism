@@ -14,29 +14,37 @@ authors = [
   { name="Joseph Turner", email="josephisaacturner@gmail.com" }
 ]
 dependencies = [
-    "jax",
-    "jaxlib",
-    "nilearn",
-    "numpy",
-    "pandas",
-    "nibabel",
-    "scipy",
-    "scikit-learn",
-    "matplotlib",
-    "seaborn",
-    "ipykernel",
-    "tqdm",
-    "statsmodels",
+  "jax",
+  "jaxlib",
+  "nilearn",
+  "numpy",
+  "pandas",
+  "nibabel",
+  "scipy",
+  "scikit-learn",
+  "matplotlib",
+  "seaborn",
+  "ipykernel",
+  "tqdm",
+  "statsmodels",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/JosephIsaacTurner/pstn"
-"Documentation" = "https://github.com/JosephIsaacTurner/pstn"
+Homepage = "https://github.com/JosephIsaacTurner/pstn"
+Documentation = "https://github.com/JosephIsaacTurner/pstn"
 
 [project.optional-dependencies]
-dev = [
-  "pytest",
-]
+dev = ["pytest"]
 
 [project.scripts]
 prism = "prism.palm_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["prism*", "tests*",]
+exclude = [
+  "testing_outputs*",
+  "notebooks*",
+  "assets*",
+  "manuscript*",
+]
