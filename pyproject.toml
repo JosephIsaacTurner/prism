@@ -1,0 +1,42 @@
+# pyproject.toml
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prism"
+version = "0.1.0"
+description = "Permutation Inference for Statistical Mapping"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name="Joseph Turner", email="josephisaacturner@gmail.com" }
+]
+dependencies = [
+    "jax",
+    "jaxlib",
+    "nilearn",
+    "numpy",
+    "pandas",
+    "nibabel",
+    "scipy",
+    "scikit-learn",
+    "matplotlib",
+    "seaborn",
+    "ipykernel",
+    "tqdm",
+    "statsmodels",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/JosephIsaacTurner/pstn"
+"Documentation" = "https://github.com/JosephIsaacTurner/pstn"
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[project.scripts]
+prism = "prism.palm_cli:main"
