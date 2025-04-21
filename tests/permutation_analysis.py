@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from pstn.inference import permutation_analysis
+from prism.inference import permutation_analysis
 import re
 
 

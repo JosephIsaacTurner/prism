@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from pstn.inference import yield_permuted_design
+from prism.inference import yield_permuted_design
 
 
 class TestYieldPermutedDesignRevised(unittest.TestCase):

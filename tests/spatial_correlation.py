@@ -1,8 +1,8 @@
 import unittest
 import numpy as np
-from pstn.loading import Dataset
-from pstn.inference import spatial_correlation_permutation_analysis
-from pstn.stats import t
+from prism.loading import Dataset
+from prism.inference import spatial_correlation_permutation_analysis
+from prism.stats import t
 import numpy.testing as npt
 from sklearn.utils import Bunch
 

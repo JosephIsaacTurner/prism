@@ -9,19 +9,22 @@ The root directory contains the main components of the project, including code, 
 ```
 prism/
 ├── prism/              # Core Python package
-│   ├── stats.py       # Statistical functions
-│   ├── inference.py   # Inference functions (hypothesis testing classes, etc.)
-│   ├── loading.py     # Functions to load data
-│   ├── plotting.py    # Functions to plot data
-│   ├── data/          # Directory for data files (brain image templates, etc.)
-├── notebooks/         # Jupyter notebooks for experimentation & analysis
-├── tests/             # Unit and integration tests
-├── assets/            # Images and other assets for documentation
-├── manuscript/        # Manuscript outlining background and methodology
-├── layout.md          # Explanation of the layout of the project
-├── README.md          # Introduction to the project for new users
-├── requirements.txt   # List of dependencies
-└── .gitignore         # Files and directories to be ignored by Git
+│   ├── stats.py        # Statistical functions
+│   ├── inference.py    # Inference functions (hypothesis testing classes, etc.)
+│   ├── loading.py      # Functions to load data
+│   ├── plotting.py     # Functions to plot data
+│   ├── tfce.py         # Functions to plot data
+│   ├── palm_cli.py     # Command line interface for PALM
+│   ├── experimental.py # Experimental functions
+│   ├── data/           # Directory for data files (brain image templates, etc.)
+├── notebooks/          # Jupyter notebooks for experimentation & analysis
+├── tests/              # Unit and integration tests
+├── assets/             # Images and other assets for documentation
+├── manuscript/         # Manuscript outlining background and methodology
+├── layout.md           # Explanation of the layout of the project
+├── README.md           # Introduction to the project for new users
+├── requirements.txt    # List of dependencies
+└── .gitignore          # Files and directories to be ignored by Git
 ```
 
 ## Directories:
