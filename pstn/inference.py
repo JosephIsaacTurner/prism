@@ -2,8 +2,9 @@ import numpy as np
 from scipy.stats import genpareto, kstest
 from tqdm import tqdm
 from statsmodels.stats.multitest import fdrcorrection
-from .loading import apply_tfce, load_nifti_if_not_already_nifti, is_nifti_like, Dataset, load_data, prepare_glm_data
+from .loading import load_nifti_if_not_already_nifti, is_nifti_like, Dataset, load_data, prepare_glm_data
 from .stats import t, aspin_welch_v, F, G
+from .tfce import apply_tfce
 from nilearn.maskers import NiftiMasker
 import nibabel as nib
 from jax import jit, random

@@ -23,7 +23,7 @@ NON_IMPLEMENTED_ARGS = [
     '-pmethodp', '-pmethodr', '-removevgbysize', '-rmethod', '-savedof', 
     '-savemask', '-savemetrics', '-saveparametric', '-saveglm', '-syncperms',
     '-subjidx', '-tfce_H', 'tfce_E', 'tfce_dh', '-Tuni', '-Tnpc', '-Tmv',
-    '-transposedata', '-verbosefilenames', '-vgdemean', '-zstat'
+    '-transposedata', '-verbosefilenames', '-vgdemean'
 ]
 
 def setup_parser():
@@ -86,6 +86,8 @@ def setup_parser():
                         help='Save one statistic image per permutation')
     parser.add_argument('-seed', '--random_state', type=int, default=42,
                         help='Random seed for reproducibility')
+    parser.add_argument('-zstat', "--z_stat", action='store_true', default=False,
+                        help='Save z-statistics instead of t-statistics')
     
     for arg in NON_IMPLEMENTED_ARGS:
         parser.add_argument(arg, action='store_true', default=False,
