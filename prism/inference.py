@@ -576,9 +576,8 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
         save_fn=save_fn_wrapper,
     )
 
-    tfce_results = tfce_manager.finalize()
-
     if tfce:
+        tfce_results = tfce_manager.finalize()
         results.update(tfce_results)
 
     save_fn_wrapper(results)
