@@ -40,11 +40,6 @@ dev = ["pytest"]
 prism = "prism.palm_cli:main"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["prism*", "tests*",]
-exclude = [
-  "testing_outputs*",
-  "notebooks*",
-  "assets*",
-  "manuscript*",
-]
+where   = ["."]
+include = ["prism*"]
+exclude = ["tests*", "notebooks*", "assets*", "manuscript*", "testing_outputs*"]
