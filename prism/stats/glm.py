@@ -338,10 +338,3 @@ def r_squared(Y, X, C, *args, **kwargs):
     # compute R²
     r2_vals = ss_mod / (ss_mod + df * mse)
     return jnp.nan_to_num(r2_vals, nan=0.0, posinf=1.0, neginf=0.0)
-
-
-@jit
-def zscore(arr):
-    mean = jnp.mean(arr, axis=0)
-    std  = jnp.std(arr,  axis=0)
-    return jnp.nan_to_num((arr - mean) / std)

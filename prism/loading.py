@@ -179,7 +179,7 @@ class Dataset:
         n_permutations: int,
         random_state: Optional[Union[int, np.random.RandomState]] = None,
         mask_img: Optional[Union[str, nib.Nifti1Image]] = None,
-        demean=True,
+        demean=False,
         # Permutation options
         exchangeability_matrix: Optional[Union[str, np.ndarray]] = None,
         vg_auto: bool = False,

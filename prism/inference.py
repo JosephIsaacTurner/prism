@@ -1,9 +1,9 @@
 import numpy as np
-from scipy.stats import genpareto, kstest
+from scipy.stats import genpareto, goodness_of_fit
 from tqdm import tqdm
 from statsmodels.stats.multitest import fdrcorrection
 from .loading import load_nifti_if_not_already_nifti, is_nifti_like, Dataset, load_data, prepare_glm_data
-from .stats import t, aspin_welch_v, F, G
+from .stats import t, aspin_welch_v, F, G, zscore
 from .tfce import apply_tfce
 from nilearn.maskers import NiftiMasker
 import nibabel as nib
@@ -11,10 +11,10 @@ from jax import jit, random
 import warnings
 from typing import List, Optional, Union, Callable, Generator, Any, Tuple
 from sklearn.utils import Bunch
-import os
 
 
-def permutation_analysis(data, design, contrast, stat_function='auto', n_permutations=1000, random_state=42, two_tailed=True, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False, accel_tail=False, demean=True, f_stat_function='auto', f_contrast_indices=None, f_only=False, correct_across_contrasts=False, on_permute_callback=None, permute=True, save_fn=None, save_1minusp=False, save_neglog10p=False, zstat=False):
+
+def permutation_analysis(data, design, contrast, stat_function='auto', n_permutations=1000, random_state=42, two_tailed=True, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False, accel_tail=False, demean=False, f_stat_function='auto', f_contrast_indices=None, f_only=False, correct_across_contrasts=False, on_permute_callback=None, permute=True, save_fn=None, save_1minusp=False, save_neglog10p=False, zstat=False):
     """
     Performs permutation testing on the provided data using a specified statistical function.
 
@@ -287,7 +287,8 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
                 vg_vector=calculated_vg_vector, # Pass calculated vector
                 within=within,
                 whole=whole,
-                flip_signs=flip_signs
+                flip_signs=flip_signs,
+                zstat=zstat
             )
 
             for j in tqdm(range(n_permutations), desc=f"Permuting {contrast_label}", leave=False):
@@ -387,7 +388,8 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
             vg_vector=calculated_vg_vector,
             within=within,
             whole=whole,
-            flip_signs=flip_signs # Note: sign flipping might be conceptually odd for F-tests depending on permutation scheme
+            flip_signs=flip_signs, # Note: sign flipping might be conceptually odd for F-tests depending on permutation scheme
+            zstat=zstat
         )
 
         for j in tqdm(range(n_permutations), desc="Permuting F-Test", leave=False):
@@ -438,7 +440,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                                           two_tailed=True, exchangeability_matrix=None, vg_auto=False, vg_vector=None,
                                           within=True, whole=False, flip_signs=False,
                                           accel_tail=False,
-                                          demean=True,
+                                          demean=False,
                                           f_stat_function='auto', f_contrast_indices=None, f_only=False,
                                           correct_across_contrasts=False,
                                           on_permute_callback=None,
@@ -524,7 +526,8 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                                         n_contrasts=n_contrasts, 
                                         save_1minusp=save_1minusp, 
                                         save_neglog10p=save_neglog10p,
-                                        z_transform=False,
+                                        demean=demean,
+                                        zstat=False,
                                         correct_across_contrasts=correct_across_contrasts,
                                         accel_tail=accel_tail)   
 
@@ -573,7 +576,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
         n_permutations=n_permutations, random_state=random_state, two_tailed=two_tailed, exchangeability_matrix=exchangeability_matrix, vg_auto=vg_auto, vg_vector=vg_vector,
         within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail, demean=False,
         on_permute_callback=on_permute_callback_wrapper, save_1minusp=save_1minusp, save_neglog10p=save_neglog10p,
-        save_fn=save_fn_wrapper,
+        save_fn=save_fn_wrapper, zstat=zstat,
     )
 
     if tfce:
@@ -652,7 +655,7 @@ def yield_sign_flipped_data(data, n_permutations, random_state):
         yield flip_data(data, subkey)
 
 
-def yield_permuted_stats(data, design, contrast, stat_function, n_permutations, random_state, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False):
+def yield_permuted_stats(data, design, contrast, stat_function, n_permutations, random_state, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False, zstat=False):
     """Generator function for permutation testing.
     data: Shape (n_samples, n_elements_per_sample)
     design: Shape (n_samples, n_features)
@@ -666,6 +669,7 @@ def yield_permuted_stats(data, design, contrast, stat_function, n_permutations, 
     within (Optional): For a 1D exchangeability matrix, indicates whether to permute within blocks.
     whole (Optional): For a 1D exchangeability matrix, indicates whether to permute whole blocks.
     flip_signs (Optional): If True, randomly flips the signs of the data for each permutation.
+    zstat (Optional): If True, calculates z-statistics instead of t-statistics. Uses Z normalization.
     """
     calculate = stat_function
     permuted_design_generator = yield_permuted_design(design=design, n_permutations=n_permutations, contrast=contrast, exchangeability_matrix=exchangeability_matrix, within=within, whole=whole, random_state=random_state)
@@ -680,6 +684,8 @@ def yield_permuted_stats(data, design, contrast, stat_function, n_permutations, 
             permuted_value = calculate(data, next(permuted_design_generator), contrast, vg_vector, len(np.unique(vg_vector)))
         else:
             permuted_value = calculate(data, next(permuted_design_generator), contrast)
+        if zstat:
+            permuted_value = zscore(permuted_value)
         yield permuted_value
 
 
@@ -979,94 +985,72 @@ def yield_permuted_design(design, n_permutations, contrast=None, exchangeability
         yield design
 
 
-def compute_p_values_accel_tail(observed, null_dist, two_tailed=True):
+def compute_p_values_accel_tail(obs, null, p_thresh=0.1, two_tailed=True):
     """
-    Compute p-values using empirical counts and, when appropriate,
-    refine the tail (p <= 0.075) via a generalized Pareto distribution (GPD)
-    fit on the upper tail of the null distribution.
+    Args:
+        obs (array-like): 1D array of observed statistics.
+        null (array-like): 1D array of null distribution values (permutations).
+        p_thresh (float): Empirical p-value cutoff for GPD refinement.
+        two_tailed (bool): If True, use absolute values (two-tailed test).
 
-    Parameters
-    ----------
-    observed : np.ndarray, shape (n_elements,)
-        Observed statistic for each element.
-    null_dist : np.ndarray, shape (n_permutations,)
-        Null distribution (the same for all voxels).
-    two_tailed : bool, default True
-        Whether to use a two-tailed test. In that case, the absolute values
-        of observed and null_dist are used.
-
-    Returns
-    -------
-    p_final : np.ndarray, shape (n_elements,)
-        The computed (and possibly refined) p-values.
+    Returns:
+        np.ndarray: 1D array of p-values, same shape as `obs`.
     """
-    # Use absolute values if two_tailed
+    obs = np.asarray(obs)
+    null = np.asarray(null)
     if two_tailed:
-        observed = np.abs(observed)
-        null_dist = np.abs(null_dist)
-    
-    n_perms = null_dist.size
+        obs, null = np.abs(obs), np.abs(null)
 
-    # Compute empirical p-values: count the number of nulls >= each observed.
-    exceedances = np.sum(null_dist[None, :] >= observed[:, None], axis=1)
-    p_emp = (exceedances + 1) / (n_perms + 1)
-    
-    # If no p_emp is <= 0.075, nothing is extreme enough; return empirical p-values.
-    if not np.any(p_emp <= 0.075):
-        return p_emp
+    n = null.size
+    if n == 0:
+        return np.ones_like(obs, float)
 
-    # --- Fit a GPD to the tail of null_dist above a threshold ---
-    # Start with the 75th percentile as our threshold.
-    threshold_percentile = 75
-    max_iter = 10
-    good_fit_found = False
-    threshold = np.percentile(null_dist, threshold_percentile)
-    
-    for _ in range(max_iter):
-        # Select tail of null distribution: values >= threshold
-        tail = null_dist[null_dist >= threshold]
-        
-        # If too few points are in the tail, break and stick with empirical p-values.
-        if tail.size < 10:
-            break
+    # 1) Empirical p-values
+    emp_p = (np.sum(null[None] >= obs[:, None], axis=1) + 1) / (n + 1)
 
-        # Fit the GPD to the excesses (tail minus threshold)
-        excesses = tail - threshold
-        fit_params = genpareto.fit(excesses)  # returns (shape, loc, scale)
-        
-        # Use a KS test to check goodness-of-fit.
-        ks_stat, ks_pvalue = kstest(excesses, 'genpareto', args=fit_params)
-        if ks_pvalue > 0.05:
-            good_fit_found = True
-            break
-        else:
-            # Increase threshold percentile for a potentially better fit.
-            threshold_percentile += (((100*(1-0.075)) - threshold_percentile) / max_iter) - 0.01 # Don't want the threshold to exceed 92.5, which is the cutoff mask for the voxels we will be using this GPD fit on.
-            threshold = np.percentile(null_dist, threshold_percentile)
-    
-    # If no good GPD fit was found, return the empirical p-values.
-    if not good_fit_found:
-        return p_emp
+    # 2) If no small p-values, skip GPD
+    if not (emp_p <= p_thresh).any():
+        return emp_p
 
-    # Compute the tail probability (fraction of nulls above threshold)
-    tail_prob = np.mean(null_dist >= threshold)
-    
-    # For those observed values that are extreme (p_emp <= 0.075) and exceed the threshold,
-    # we recompute the p-value using the fitted GPD.
-    p_final = np.array(p_emp.copy())
-    mask = (p_emp <= 0.075) & (observed >= threshold)
-    
-    if np.any(mask):
-        excess_obs = observed[mask] - threshold
-        gpd_cdf_vals = genpareto.cdf(excess_obs, *fit_params)
-        p_gpd = tail_prob * (1 - gpd_cdf_vals)
-        p_final[mask] = p_gpd
+    # 3) Try fitting GPD on successive quantiles
+    for q in np.arange(0.751, 0.992, 0.01):
+        thresh = np.percentile(null, q * 100)
+        tail = null[null >= thresh]
+        if tail.size < 20:
+            break # Not enough data to fit GPD
 
-    return p_final
+        excess = tail - thresh
+        try:
+            c, loc, scale = genpareto.fit(excess, floc=0, method="MM") # Method of moments
+            if scale <= 0:
+                continue
+
+            gof = goodness_of_fit(
+                genpareto, excess,
+                fit_params={"c": c, "scale": scale, "loc": 0},
+                statistic="ad" # Anderson-Darling test
+            )
+            if gof.pvalue <= 0.05:
+                continue
+
+            # 4) Refine small p’s with GPD tail
+            tail_prob = np.mean(null >= thresh)
+            mask = (emp_p <= p_thresh) & (obs >= thresh)
+            if mask.any():
+                exc_obs = np.maximum(obs[mask] - thresh, np.finfo(float).eps)
+                p_gpd = tail_prob * genpareto.sf(exc_obs, c=c, loc=0, scale=scale)
+                emp_p[mask] = np.minimum(emp_p[mask], np.maximum(p_gpd, np.finfo(float).tiny))
+
+            break  # stop after first good fit
+
+        except Exception:
+            continue
+
+    return emp_p 
 
 
 class TfceStatsManager:
-    def __init__(self, n_permutations, mask_img, two_tailed=True, n_contrasts=1, save_1minusp=False, save_neglog10p=False, z_transform=False, correct_across_contrasts=False, accel_tail=False, zstat=False):
+    def __init__(self, n_permutations, mask_img, two_tailed=True, n_contrasts=1, save_1minusp=False, save_neglog10p=False, correct_across_contrasts=False, accel_tail=False, zstat=False):
 
         self.n_permutations = n_permutations
         self.mask_img = mask_img
@@ -1075,10 +1059,9 @@ class TfceStatsManager:
         self.n_contrasts = n_contrasts
         self.save_1minusp = save_1minusp
         self.save_neglog10p = save_neglog10p
-        self.z_transform = z_transform
+        self.zstat = zstat
         self.correct_across_contrasts = correct_across_contrasts    
         self.accel_tail = accel_tail
-        self.zstat = zstat
 
         self.exceedances_tfce = Bunch()
         self.max_stat_dist_tfce = Bunch()
