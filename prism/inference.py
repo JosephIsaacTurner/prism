@@ -985,69 +985,151 @@ def yield_permuted_design(design, n_permutations, contrast=None, exchangeability
         yield design
 
 
-def compute_p_values_accel_tail(obs, null, p_thresh=0.1, two_tailed=True):
+def gpdpvals(exceedances, scale, shape):
     """
-    Args:
-        obs (array-like): 1D array of observed statistics.
-        null (array-like): 1D array of null distribution values (permutations).
-        p_thresh (float): Empirical p-value cutoff for GPD refinement.
-        two_tailed (bool): If True, use absolute values (two-tailed test).
+    Compute GPD tail survival p-values for exceedances, robust to invalid-power errors.
 
-    Returns:
-        np.ndarray: 1D array of p-values, same shape as `obs`.
+    Parameters
+    ----------
+    exceedances : array-like
+        Values above the threshold (x - threshold), assumed >= 0.
+    scale : float
+        GPD scale parameter (must be > 0).
+    shape : float
+        GPD shape parameter.
+
+    Returns
+    -------
+    p_values : ndarray
+        Survival-function p-values for each exceedance, clipped to [0, 1].
     """
+    exceedances = np.asarray(exceedances, dtype=float)
+    if scale <= 0:
+        raise ValueError("`scale` must be positive.")
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        if abs(shape) < np.finfo(float).eps:
+            p = np.exp(- exceedances / scale)
+        else:
+            base = 1 - shape * exceedances / scale
+            p = np.where(base > 0, base ** (1.0 / shape), 0.0)
+
+    p = np.nan_to_num(p, nan=0.0, posinf=1.0, neginf=0.0)
+    return np.clip(p, 0.0, 1.0)
+
+
+def compute_p_values_accel_tail(
+    obs,
+    null_dist,
+    two_tailed=True,
+    p_threshold=0.1,
+    min_tail_size=20,
+    start_quantile=0.75,
+    method="MOM",
+    n_mc_samples=5000
+):
+    """
+    Convert observed statistics to p-values via permutations + optional GPD tail.
+
+    Parameters
+    ----------
+    obs : array-like, shape (n,)
+        Observed test statistics.
+    null_dist : array-like, shape (m,)
+        Null distribution stats from permutations.
+    two_tailed : bool, default=True
+        If True, use absolute values of obs and null_dist.
+    p_threshold : float, default=0.1
+        Empirical p-value cutoff for applying GPD tail refinement.
+    min_tail_size : int, default=20
+        Minimum number of exceedances required for GPD fitting.
+    start_quantile : float in (0,1), default=0.75
+        Initial quantile of null_dist at which to define the tail.
+    method : {'MOM', 'MLE'}, default='MOM'
+        'MOM'  – Hosking–Wallis method-of-moments fit
+        'MLE'  – Maximum-likelihood fit via SciPy
+    n_mc_samples : int, default=5000
+        Monte-Carlo samples for the Anderson–Darling goodness-of-fit.
+
+    Returns
+    -------
+    p_values : ndarray, shape (n,)
+        Estimated p-values for each observed statistic.
+    """
+    print("Using accelerated tail method for p-value computation.", flush=True)
     obs = np.asarray(obs)
-    null = np.asarray(null)
+    null_dist = np.asarray(null_dist)
     if two_tailed:
-        obs, null = np.abs(obs), np.abs(null)
+        obs, null_dist = np.abs(obs), np.abs(null_dist)
 
-    n = null.size
-    if n == 0:
-        return np.ones_like(obs, float)
+    m = null_dist.size
+    if m == 0:
+        return np.ones_like(obs, dtype=float)
 
     # 1) Empirical p-values
-    emp_p = (np.sum(null[None] >= obs[:, None], axis=1) + 1) / (n + 1)
+    empirical_p = (np.sum(null_dist[None] >= obs[:, None], axis=1) + 1) / (m + 1)
+    if not np.any(empirical_p <= p_threshold):
+        return empirical_p
 
-    # 2) If no small p-values, skip GPD
-    if not (emp_p <= p_thresh).any():
-        return emp_p
+    # 2) GPD tail refinement
+    for q in np.arange(start_quantile, 0.992, 0.01):
+        threshold = np.percentile(null_dist, q * 100)
+        tail = null_dist[null_dist >= threshold]
+        if tail.size < min_tail_size:
+            break
 
-    # 3) Try fitting GPD on successive quantiles
-    for q in np.arange(0.751, 0.992, 0.01):
-        thresh = np.percentile(null, q * 100)
-        tail = null[null >= thresh]
-        if tail.size < 20:
-            break # Not enough data to fit GPD
-
-        excess = tail - thresh
+        exceedances = tail - threshold
         try:
-            c, loc, scale = genpareto.fit(excess, floc=0, method="MM") # Method of moments
+            if method.upper() == "MOM":
+                mean_exc = exceedances.mean()
+                var_exc = exceedances.var(ddof=0)
+                if var_exc <= 0:
+                    continue
+                scale = mean_exc * (mean_exc**2 / var_exc + 1) / 2
+                shape = (mean_exc**2 / var_exc - 1) / 2
+                loc = 0
+            elif method.upper() == "MLE":
+                shape, loc, scale = genpareto.fit(exceedances, floc=0, method="MLE")
+            else:
+                raise ValueError(f"Unknown method '{method}'")
+
             if scale <= 0:
                 continue
 
+            # 3) Goodness-of-fit (AD test with known params)
             gof = goodness_of_fit(
-                genpareto, excess,
-                fit_params={"c": c, "scale": scale, "loc": 0},
-                statistic="ad" # Anderson-Darling test
+                genpareto,
+                exceedances,
+                known_params={"c": shape, "loc": loc, "scale": scale},
+                statistic="ad",
+                n_mc_samples=n_mc_samples
             )
             if gof.pvalue <= 0.05:
                 continue
+            print("Found good GPD fit.", flush=True)
 
-            # 4) Refine small p’s with GPD tail
-            tail_prob = np.mean(null >= thresh)
-            mask = (emp_p <= p_thresh) & (obs >= thresh)
-            if mask.any():
-                exc_obs = np.maximum(obs[mask] - thresh, np.finfo(float).eps)
-                p_gpd = tail_prob * genpareto.sf(exc_obs, c=c, loc=0, scale=scale)
-                emp_p[mask] = np.minimum(emp_p[mask], np.maximum(p_gpd, np.finfo(float).tiny))
+            # 4) Refine tail p-values
+            tail_prob = np.mean(null_dist >= threshold)
+            mask = (empirical_p <= p_threshold) & (obs >= threshold)
+            if np.any(mask):
+                obs_exc = obs[mask] - threshold
+                if method.upper() == "MOM":
+                    tail_p = gpdpvals(obs_exc, scale, shape)
+                else:
+                    tail_p = genpareto.sf(obs_exc, c=shape, loc=loc, scale=scale)
+                emp_tail_p = tail_prob * tail_p
+                empirical_p[mask] = np.minimum(
+                    empirical_p[mask],
+                    np.maximum(emp_tail_p, np.finfo(float).tiny)
+                )
+            print("Succesfully refined tail p-values.", flush=True)
 
-            break  # stop after first good fit
+            break
 
         except Exception:
             continue
 
-    return emp_p 
-
+    return empirical_p
 
 class TfceStatsManager:
     def __init__(self, n_permutations, mask_img, two_tailed=True, n_contrasts=1, save_1minusp=False, save_neglog10p=False, correct_across_contrasts=False, accel_tail=False, zstat=False):
