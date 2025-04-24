@@ -328,7 +328,6 @@ def r_squared(Y, X, C, *args, **kwargs):
     R² in [0, 1];  0/0→0.
     """
     n, p = Y.shape
-    C = jnp.ravel(C)
     k = X.shape[1]
     # fit GLM
     XtX_inv = pinv(X.T @ X)

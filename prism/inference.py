@@ -541,7 +541,6 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                                         n_contrasts=n_contrasts, 
                                         save_1minusp=save_1minusp, 
                                         save_neglog10p=save_neglog10p,
-                                        demean=demean,
                                         correct_across_contrasts=correct_across_contrasts,
                                         accel_tail=accel_tail)   
 
@@ -588,7 +587,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
     results = permutation_analysis(
         data=data, design=design, contrast=contrast, stat_function=stat_function, f_contrast_indices=f_contrast_indices, f_only=f_only, f_stat_function=f_stat_function,
         n_permutations=n_permutations, random_state=random_state, two_tailed=two_tailed, exchangeability_matrix=exchangeability_matrix, vg_auto=vg_auto, vg_vector=vg_vector,
-        within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail, demean=False,
+        within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail, demean=demean,
         on_permute_callback=on_permute_callback_wrapper, save_1minusp=save_1minusp, save_neglog10p=save_neglog10p,
         save_fn=save_fn_wrapper,zstat=zstat,
     )

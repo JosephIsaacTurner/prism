@@ -446,18 +446,17 @@ class ResultSaver:
         fn = self.f_stat_fn if is_f else self.stat_fn
         use_groups = self.variance_groups is not None
 
+        tag = None
         if fn == 'auto':
-            tag = None
             if is_f:
                 tag = 'gstat' if use_groups else 'fstat'
             else:
                 tag = 'vstat' if use_groups else 'tstat'
-        elif fn == 'pearson_r':
-            tag = 'rstat'
-        elif fn == 'r_squared':
-            tag = 'rsqstat'
-        else:
-            tag = None
+        elif fn == 'pearson':
+            if is_f:
+                tag = 'rsqstat'
+            else:
+                tag = 'rstat'
         
         if self.n_contrasts == 1:
             # If only one contrast was tested, remove the contrast suffix
