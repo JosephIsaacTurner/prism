@@ -1,10 +1,15 @@
 from jax.numpy.linalg import pinv, matrix_rank
+from jax.scipy.stats import norm
+from jax.scipy.special import betainc
 from jax import jit, vmap
 import jax.numpy as jnp
 from jax.ops import segment_sum
 from functools import partial
 import warnings
 
+"""
+Generalized linear model (GLM) statistics.
+"""
 
 @jit
 def t(Y, X, C):
@@ -43,15 +48,11 @@ def t(Y, X, C):
     # residuals & df
     resid = Y - X @ beta
     df = n - k
-    if df <= 0:
-        warnings.warn("Non-positive df; returning NaNs.")
-        return jnp.full(p, jnp.nan)
-    # mse
     mse = jnp.maximum(jnp.sum(resid**2, axis=0) / df, jnp.finfo(resid.dtype).tiny)
     # t‐statistic
     var_C = jnp.maximum(C @ XtX_inv @ C, 0.0)
     t_vals = (C @ beta) / jnp.sqrt(var_C * mse)
-    return jnp.nan_to_num(t_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf)
+    return jnp.nan_to_num(t_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), 1, df
 
 
 @partial(jit, static_argnums=(4,))
@@ -103,6 +104,8 @@ def aspin_welch_v(Y, X, C, groups, J_max):
     # weights
     rss = jnp.maximum(segment_sum(resid**2, g, num_segments=J_max), 1e-12)
     W = d[:, None] / rss
+    # Sattherthwaite df
+    df = (W.sum(axis=0)**2) / ((W**2 / d[:, None]).sum(axis=0))
     # denom
     Mb = segment_sum(jnp.einsum("ij,ik->ijk", X, X), g, num_segments=J_max)
     cte = jnp.sum(Mb.reshape(J_max, -1, 1) * W[:, None, :], axis=0)
@@ -111,7 +114,7 @@ def aspin_welch_v(Y, X, C, groups, J_max):
     )
     den = jnp.maximum(den, 1e-12)
     v_vals = (C @ beta) / jnp.sqrt(den)
-    return jnp.nan_to_num(v_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf)
+    return jnp.nan_to_num(v_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), 1, df
 
 
 @jit
@@ -148,6 +151,7 @@ def F(Y, X, C):
 
     # residuals & MSE
     resid = Y - X @ beta
+    df1 = matrix_rank(C)
     df2 = n - matrix_rank(X)
     mse = jnp.maximum(jnp.sum(resid**2, axis=0) / df2, jnp.finfo(resid.dtype).tiny)
 
@@ -161,7 +165,7 @@ def F(Y, X, C):
 
     # F‐statistic
     F_vals = (ss / m) / mse
-    return jnp.nan_to_num(F_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf)
+    return jnp.nan_to_num(F_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), df1, df2
 
 
 @partial(jit, static_argnums=(4,))
@@ -240,7 +244,11 @@ def G(Y, X, C, groups, J_max):
     b = b / (m * (m + 2))
 
     G_vals = (num_ss / m) / jnp.maximum(1 + 2 * (m - 1) * b, 1e-12)
-    return jnp.nan_to_num(G_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf)
+
+    # Ddegrees of freedom
+    df2     = (W_int.sum(axis=0)**2) / ((W_int**2 / d[:, None]).sum(axis=0))
+
+    return jnp.nan_to_num(G_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), m, df2
 
 
 @jit
@@ -287,7 +295,7 @@ def pearson_r(Y, X, C, *args, **kwargs):
     # compute Pearson r
     denom = jnp.sqrt(CB**2 + df * var_C * mse)
     r_vals = CB / denom
-    return jnp.nan_to_num(r_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf)
+    return jnp.nan_to_num(r_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), 1, df
 
 
 @jit
@@ -337,4 +345,124 @@ def r_squared(Y, X, C, *args, **kwargs):
     ss_mod = jnp.einsum("mp,mn,np->p", CB, V_inv, CB)
     # compute R²
     r2_vals = ss_mod / (ss_mod + df * mse)
-    return jnp.nan_to_num(r2_vals, nan=0.0, posinf=1.0, neginf=0.0)
+    return jnp.nan_to_num(r2_vals, nan=0.0, posinf=1.0, neginf=0.0), matrix_rank(C), df
+
+"""
+Zstat equivalent functions for each of the above.
+"""
+
+@jit
+def t_z(Y, X, C):
+    """
+    t→z via incomplete‐beta CDF and norm.ppf
+    """
+    t_vals, df1, df2 = t(Y, X, C)
+    # compute I_{v/(v+t²)}(v/2,1/2)
+    z2    = df2 / (df2 + t_vals**2)
+    ib    = betainc(df2/2, 0.5, z2)
+    cdf_t = jnp.where(t_vals > 0, 1 - 0.5 * ib, 0.5 * ib)
+    cdf_t = jnp.clip(cdf_t, jnp.finfo(t_vals.dtype).eps, 1 - jnp.finfo(t_vals.dtype).eps)
+    z_vals = norm.ppf(cdf_t)
+    return jnp.nan_to_num(z_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), 1, df2
+
+
+@partial(jit, static_argnums=(4,))
+def aspin_welch_v_z(Y, X, C, groups, J_max):
+    """
+    v→z via incomplete‐beta CDF and norm.ppf
+    """
+    v_vals, df1, df2 = aspin_welch_v(Y, X, C, groups, J_max)
+    z2    = df2 / (df2 + v_vals**2)
+    ib    = betainc(df2/2, 0.5, z2)
+    cdf_v = jnp.where(v_vals > 0, 1 - 0.5 * ib, 0.5 * ib)
+    cdf_v = jnp.clip(cdf_v, jnp.finfo(v_vals.dtype).eps, 1 - jnp.finfo(v_vals.dtype).eps)
+    z_vals = norm.ppf(cdf_v)
+    return jnp.nan_to_num(z_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), 1, df2
+
+
+@jit
+def F_z(Y, X, C):
+    """
+    Convert F‐stats to z‐scores via the F‐CDF → normal‐ppf mapping.
+    """
+    F_vals, df1, df2 = F(Y, X, C)
+
+    # CDF argument for F(df1,df2)
+    x     = (df1 * F_vals) / (df2 + df1 * F_vals)
+    cdf_F = betainc(df1 / 2, df2 / 2, x)
+
+    # guard boundaries
+    eps   = jnp.finfo(F_vals.dtype).eps
+    cdf_F = jnp.clip(cdf_F, eps, 1 - eps)
+
+    # inverse‐normal
+    z     = norm.ppf(cdf_F)
+    return jnp.nan_to_num(z, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), df1, df2
+
+
+@partial(jit, static_argnums=(4,))
+def G_z(Y, X, C, groups, J_max):
+    """
+    G→z via F‐CDF (incomplete‐beta) and norm.ppf.
+    """
+    G_vals, df1, df2 = G(Y, X, C, groups, J_max)
+
+    x      = (df1 * G_vals) / (df2 + df1 * G_vals)
+    cdf_G  = betainc(df1/2, df2/2, x)
+    eps    = jnp.finfo(G_vals.dtype).eps
+    cdf_G  = jnp.clip(cdf_G, eps, 1 - eps)
+    z_vals = norm.ppf(cdf_G)
+
+    return jnp.nan_to_num(z_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), df1, df2
+
+@jit
+def fisher_z(Y, X, C, *args, **kwargs):
+    """
+    Compute Fisher's z-statistic for a single contrast.
+
+    Parameters
+    ----------
+    Y : array, (n, p)
+        Response data.
+    X : array, (n, k)
+        Design matrix.
+    C : array, (k,)
+        Contrast vector.
+
+    Returns
+    -------
+    z_vals : array, (p,)
+        fisher_z = inverse hyperbolic tangent of pearson_r.
+        See pearson_r docstring for details.
+
+    Notes
+    -----
+    0/0→0, ±/0→±∞.
+    """
+    r, 1, df = pearson_r(Y, X, C)
+    return jnp.arctanh(r), 1, df
+
+
+@jit
+def r_squared_z(Y, X, C, *args, **kwargs):
+    """
+    Convert R² to z-statistic.
+
+    Parameters
+    ----------
+    Y : array, (n, p)
+        Response data.
+    X : array, (n, k)
+        Design matrix.
+    C : array, (k,)
+        Contrast vector.
+
+    Returns
+    -------
+    z_vals : array, (p,)
+        Use normally distributed percent point function to convert R² to z-statistic.
+        See r_squared docstring for details.
+
+    """
+    r2, df1, df2 = r_squared(Y, X, C)
+    return norm.ppf(r2), df1, df2

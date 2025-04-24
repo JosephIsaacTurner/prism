@@ -7,7 +7,6 @@ import nibabel as nib
 from nilearn.maskers import NiftiMasker
 from .loading import load_data, is_nifti_like, ResultSaver
 from .inference import permutation_analysis, permutation_analysis_volumetric_dense
-from .stats import pearson_r, r_squared
 
 # TODO:
 # Implement other statistical methods beyond t-test
@@ -236,8 +235,11 @@ def main():
 
     output_prefix = get_output_path(args.output)
 
-    stat_function = 'auto' if not args.pearson_r else pearson_r
-    f_stat_function = 'auto' if not args.pearson_r else r_squared
+    if args.zstat:
+        stat_function 
+
+    stat_function = 'auto' if not args.pearson_r else 'pearson'
+    f_stat_function = 'auto' if not args.pearson_r else 'pearson'
 
     results_saver = ResultSaver(
         prefix=output_prefix,
@@ -247,7 +249,6 @@ def main():
         n_contrasts=n_contrasts,
         mask_img = mask_img,
         save_permutations=args.save_permutations,
-        zstat=args.zstat,
     )
 
     if args.save_permutations:
@@ -287,7 +288,6 @@ def main():
             save_1minusp=args.save1_p,
             save_neglog10p=args.logp,
             save_fn=results_saver.save_results,
-            zstat=args.zstat,
         )
 
     else:
@@ -315,7 +315,6 @@ def main():
             save_1minusp=args.save1_p,
             save_neglog10p=args.logp,
             save_fn=results_saver.save_results,
-            zstat=args.zstat
         )
 
 

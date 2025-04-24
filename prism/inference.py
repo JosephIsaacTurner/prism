@@ -3,7 +3,8 @@ from scipy.stats import genpareto, goodness_of_fit
 from tqdm import tqdm
 from statsmodels.stats.multitest import fdrcorrection
 from .loading import load_nifti_if_not_already_nifti, is_nifti_like, Dataset, load_data, prepare_glm_data
-from .stats import t, aspin_welch_v, F, G, zscore
+from .stats import t, aspin_welch_v, F, G, pearson_r, r_squared
+from .stats import t_z, aspin_welch_v_z, F_z, G_z, fisher_z, r_squared_z
 from .tfce import apply_tfce
 from nilearn.maskers import NiftiMasker
 import nibabel as nib
@@ -203,7 +204,15 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
     # Determine which stat functions to use
     actual_stat_function = None
     if stat_function == 'auto':
-        actual_stat_function = aspin_welch_v if use_variance_groups else t
+        if not zstat:
+            actual_stat_function = aspin_welch_v if use_variance_groups else t
+        else:
+            actual_stat_function = aspin_welch_v_z if use_variance_groups else t_z
+    elif stat_function == 'pearson':
+        if not zstat:
+            actual_stat_function = pearson_r
+        else:
+            actual_stat_function = fisher_z
     elif callable(stat_function):
         actual_stat_function = stat_function
     else:
@@ -212,7 +221,15 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
     actual_f_stat_function = None
     if perform_f_test:
         if f_stat_function == 'auto':
-            actual_f_stat_function = G if use_variance_groups else F
+            if not zstat:
+                actual_f_stat_function = G if use_variance_groups else F
+            else:
+                actual_f_stat_function = G_z if use_variance_groups else F_z
+        elif f_stat_function == 'pearson':
+            if not zstat:
+                actual_f_stat_function = r_squared
+            else:
+                actual_f_stat_function = r_squared_z
         elif callable(f_stat_function):
             actual_f_stat_function = f_stat_function
         else:
@@ -236,9 +253,9 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
             contrast_label = f"c{i+1}"
             current_contrast = np.ravel(original_contrast[i:i+1])
             if use_variance_groups:
-                true_stats = np.ravel(actual_stat_function(data, design, current_contrast, calculated_vg_vector, n_groups))
+                true_stats = np.ravel(actual_stat_function(data, design, current_contrast, calculated_vg_vector, n_groups)[0])
             else:
-                true_stats = np.ravel(actual_stat_function(data, design, current_contrast))
+                true_stats = np.ravel(actual_stat_function(data, design, current_contrast)[0])
 
             if true_stats.ndim == 0: # Handle case where stat_function returns scalar (e.g., 1 element)
                 true_stats = true_stats.reshape(1,)
@@ -252,9 +269,9 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
     # Do ground truth F tests
     if perform_f_test:
         if use_variance_groups:
-            true_stats_f = np.ravel(actual_f_stat_function(data, design, f_contrast, calculated_vg_vector, n_groups))
+            true_stats_f = np.ravel(actual_f_stat_function(data, design, f_contrast, calculated_vg_vector, n_groups)[0])
         else:
-            true_stats_f = np.ravel(actual_f_stat_function(data, design, f_contrast))
+            true_stats_f = np.ravel(actual_f_stat_function(data, design, f_contrast)[0])
 
         if true_stats_f.ndim == 0: # Handle case where stat_function returns scalar (e.g., 1 element)
             true_stats_f = true_stats_f.reshape(1,)
@@ -288,7 +305,6 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
                 within=within,
                 whole=whole,
                 flip_signs=flip_signs,
-                zstat=zstat
             )
 
             for j in tqdm(range(n_permutations), desc=f"Permuting {contrast_label}", leave=False):
@@ -389,7 +405,6 @@ def permutation_analysis(data, design, contrast, stat_function='auto', n_permuta
             within=within,
             whole=whole,
             flip_signs=flip_signs, # Note: sign flipping might be conceptually odd for F-tests depending on permutation scheme
-            zstat=zstat
         )
 
         for j in tqdm(range(n_permutations), desc="Permuting F-Test", leave=False):
@@ -575,7 +590,7 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
         n_permutations=n_permutations, random_state=random_state, two_tailed=two_tailed, exchangeability_matrix=exchangeability_matrix, vg_auto=vg_auto, vg_vector=vg_vector,
         within=within, whole=whole, flip_signs=flip_signs, accel_tail=accel_tail, demean=False,
         on_permute_callback=on_permute_callback_wrapper, save_1minusp=save_1minusp, save_neglog10p=save_neglog10p,
-        save_fn=save_fn_wrapper, zstat=zstat,
+        save_fn=save_fn_wrapper,zstat=zstat,
     )
 
     if tfce:
@@ -654,7 +669,7 @@ def yield_sign_flipped_data(data, n_permutations, random_state):
         yield flip_data(data, subkey)
 
 
-def yield_permuted_stats(data, design, contrast, stat_function, n_permutations, random_state, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False, zstat=False):
+def yield_permuted_stats(data, design, contrast, stat_function, n_permutations, random_state, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False):
     """Generator function for permutation testing.
     data: Shape (n_samples, n_elements_per_sample)
     design: Shape (n_samples, n_features)
@@ -668,7 +683,6 @@ def yield_permuted_stats(data, design, contrast, stat_function, n_permutations, 
     within (Optional): For a 1D exchangeability matrix, indicates whether to permute within blocks.
     whole (Optional): For a 1D exchangeability matrix, indicates whether to permute whole blocks.
     flip_signs (Optional): If True, randomly flips the signs of the data for each permutation.
-    zstat (Optional): If True, calculates z-statistics instead of t-statistics. Uses Z normalization.
     """
     calculate = stat_function
     permuted_design_generator = yield_permuted_design(design=design, n_permutations=n_permutations, contrast=contrast, exchangeability_matrix=exchangeability_matrix, within=within, whole=whole, random_state=random_state)
@@ -680,11 +694,9 @@ def yield_permuted_stats(data, design, contrast, stat_function, n_permutations, 
         if (exchangeability_matrix is not None and vg_auto) or vg_vector:
             if vg_vector is None:
                 vg_vector = get_vg_vector(exchangeability_matrix, within=within, whole=whole)
-            permuted_value = calculate(data, next(permuted_design_generator), contrast, vg_vector, len(np.unique(vg_vector)))
+            permuted_value, df1, df2 = calculate(data, next(permuted_design_generator), contrast, vg_vector, len(np.unique(vg_vector)))
         else:
-            permuted_value = calculate(data, next(permuted_design_generator), contrast)
-        if zstat:
-            permuted_value = zscore(permuted_value)
+            permuted_value, df1, df2 = calculate(data, next(permuted_design_generator), contrast)
         yield permuted_value
 
 
@@ -1131,7 +1143,7 @@ def compute_p_values_accel_tail(
     return empirical_p
 
 class TfceStatsManager:
-    def __init__(self, n_permutations, mask_img, two_tailed=True, n_contrasts=1, save_1minusp=False, save_neglog10p=False, correct_across_contrasts=False, accel_tail=False, zstat=False):
+    def __init__(self, n_permutations, mask_img, two_tailed=True, n_contrasts=1, save_1minusp=False, save_neglog10p=False, correct_across_contrasts=False, accel_tail=False):
 
         self.n_permutations = n_permutations
         self.mask_img = mask_img
@@ -1661,7 +1673,7 @@ class _SpatialCorrelationAnalysis:
                      raise ValueError("Dataset 1 missing components needed for shape validation.")
                 # Calculate temporary map just for shape
                 stat_args = [first_ds.data, first_ds.design, first_ds.contrast]
-                temp_stat_map = first_ds.stat_function(*stat_args)
+                temp_stat_map = first_ds.stat_function(*stat_args)[0]
                 self.target_feature_shape = temp_stat_map.ravel().shape[0]
              except Exception as e:
                  warnings.warn(f"Could not get shape from dataset 1 stat map: {e}. Trying refs.")
@@ -1705,7 +1717,7 @@ class _SpatialCorrelationAnalysis:
                 stat_args.extend([effective_vg_vector, n_groups]) # Assumes stat_func signature adapts
 
             # Calculate stats
-            true_stats_raw = dataset.stat_function(*stat_args)
+            true_stats_raw = dataset.stat_function(*stat_args)[0]
             true_stats_flat = true_stats_raw.ravel()
 
             # Validate shape
