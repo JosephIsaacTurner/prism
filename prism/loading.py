@@ -446,9 +446,7 @@ class ResultSaver:
         fn = self.f_stat_fn if is_f else self.stat_fn
         use_groups = self.variance_groups is not None
 
-        if self.zstat:
-            tag = 'zstat'
-        elif fn == 'auto':
+        if fn == 'auto':
             tag = None
             if is_f:
                 tag = 'gstat' if use_groups else 'fstat'
@@ -464,6 +462,9 @@ class ResultSaver:
         if self.n_contrasts == 1:
             # If only one contrast was tested, remove the contrast suffix
             key = key.replace("_c1", "")
+
+        if self.zstat:
+            tag = f"z{tag}" if tag else None
 
         return key.replace("stat", tag) if tag and "stat" in key else key
 

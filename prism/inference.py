@@ -527,7 +527,6 @@ def permutation_analysis_volumetric_dense(imgs, mask_img,
                                         save_1minusp=save_1minusp, 
                                         save_neglog10p=save_neglog10p,
                                         demean=demean,
-                                        zstat=False,
                                         correct_across_contrasts=correct_across_contrasts,
                                         accel_tail=accel_tail)   
 
@@ -1141,7 +1140,6 @@ class TfceStatsManager:
         self.n_contrasts = n_contrasts
         self.save_1minusp = save_1minusp
         self.save_neglog10p = save_neglog10p
-        self.zstat = zstat
         self.correct_across_contrasts = correct_across_contrasts    
         self.accel_tail = accel_tail
 

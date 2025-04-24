@@ -247,6 +247,7 @@ def main():
         n_contrasts=n_contrasts,
         mask_img = mask_img,
         save_permutations=args.save_permutations,
+        zstat=args.zstat,
     )
 
     if args.save_permutations:
