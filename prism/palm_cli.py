@@ -235,9 +235,6 @@ def main():
 
     output_prefix = get_output_path(args.output)
 
-    if args.zstat:
-        stat_function 
-
     stat_function = 'auto' if not args.pearson_r else 'pearson'
     f_stat_function = 'auto' if not args.pearson_r else 'pearson'
 
@@ -249,6 +246,7 @@ def main():
         n_contrasts=n_contrasts,
         mask_img = mask_img,
         save_permutations=args.save_permutations,
+        zstat=args.zstat,
     )
 
     if args.save_permutations:
@@ -288,6 +286,7 @@ def main():
             save_1minusp=args.save1_p,
             save_neglog10p=args.logp,
             save_fn=results_saver.save_results,
+            zstat=args.zstat,
         )
 
     else:

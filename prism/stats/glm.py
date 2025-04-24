@@ -439,8 +439,8 @@ def fisher_z(Y, X, C, *args, **kwargs):
     -----
     0/0→0, ±/0→±∞.
     """
-    r, 1, df = pearson_r(Y, X, C)
-    return jnp.arctanh(r), 1, df
+    r, df1, df2 = pearson_r(Y, X, C)
+    return jnp.arctanh(r), 1, df2
 
 
 @jit
