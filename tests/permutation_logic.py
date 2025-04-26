@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from prism.inference import yield_permuted_design
+from prism.inference import yield_permuted_indices
 
 
 class TestYieldPermutedDesignRevised(unittest.TestCase):
@@ -98,12 +98,17 @@ class TestYieldPermutedDesignRevised(unittest.TestCase):
     def _run_and_collect(self, design, n_perms, random_state, exchangeability_matrix=None, within=None, whole=None):
             """Helper to run the generator and return a list."""
             current_rng = random_state if isinstance(random_state, np.random.Generator) else np.random.default_rng(random_state)
-            return list(yield_permuted_design(design=design,
-                                            n_permutations=n_perms,
-                                            random_state=current_rng, # Use provided or fresh RNG
-                                            exchangeability_matrix=exchangeability_matrix,
-                                            within=within,
-                                            whole=whole))
+            perm_idx_generator = yield_permuted_indices(
+                design=design,
+                n_permutations=n_perms,
+                random_state=current_rng, # Use provided or fresh RNG
+                exchangeability_matrix=exchangeability_matrix,
+                within=within,
+                whole=whole
+            )
+            perm_indices = list(perm_idx_generator)
+            designs = [design[indices] for indices in perm_indices]
+            return designs
 
     # --- Basic Cases (Free Exchange) ---
     def test_free_exchange_no_eb(self):

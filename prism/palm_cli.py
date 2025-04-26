@@ -55,7 +55,7 @@ def setup_parser():
                         help='Exchangeability blocks file (.csv or .npy)')
     parser.add_argument('-vg', '--variance_groups', type=str, default=None,
                         help='Variance groups file (.csv, .npy) or "auto" for automatic detection')
-    parser.add_argument('-within', action='store_true', default=True,
+    parser.add_argument('-within', action='store_true', default=None,
                         help='If True, exchangeability blocks are within-subjects')
     parser.add_argument('-whole', action='store_true', default=False,
                         help='If True, exchangeability blocks are whole-brain')
@@ -151,6 +151,12 @@ def validate_args(args):
             args.accel = True
     elif args.accel is True:
         print("Acceleration enabled with default method: tail")
+
+    # Handle within and whole parameters.
+    if args.within is None and args.whole is True:
+        args.within = False
+    elif args.within is None:
+        args.within = True
 
     # Handle p-value format options
     if args.save1_p is True and args.logp is True:

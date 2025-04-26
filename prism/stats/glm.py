@@ -1,15 +1,17 @@
-from jax.numpy.linalg import pinv, matrix_rank
-from jax.scipy.stats import norm
-from jax.scipy.special import betainc
-from jax import jit, vmap
-import jax.numpy as jnp
-from jax.ops import segment_sum
-from functools import partial
 import warnings
+from functools import partial
+
+import jax.numpy as jnp
+from jax import jit, vmap
+from jax.numpy.linalg import matrix_rank, pinv
+from jax.ops import segment_sum
+from jax.scipy.special import betainc
+from jax.scipy.stats import norm
 
 """
 Generalized linear model (GLM) statistics.
 """
+
 
 @jit
 def t(Y, X, C):
@@ -105,7 +107,7 @@ def aspin_welch_v(Y, X, C, groups, J_max):
     rss = jnp.maximum(segment_sum(resid**2, g, num_segments=J_max), 1e-12)
     W = d[:, None] / rss
     # Sattherthwaite df
-    df = (W.sum(axis=0)**2) / ((W**2 / d[:, None]).sum(axis=0))
+    df = (W.sum(axis=0) ** 2) / ((W**2 / d[:, None]).sum(axis=0))
     # denom
     Mb = segment_sum(jnp.einsum("ij,ik->ijk", X, X), g, num_segments=J_max)
     cte = jnp.sum(Mb.reshape(J_max, -1, 1) * W[:, None, :], axis=0)
@@ -246,7 +248,7 @@ def G(Y, X, C, groups, J_max):
     G_vals = (num_ss / m) / jnp.maximum(1 + 2 * (m - 1) * b, 1e-12)
 
     # Ddegrees of freedom
-    df2     = (W_int.sum(axis=0)**2) / ((W_int**2 / d[:, None]).sum(axis=0))
+    df2 = (W_int.sum(axis=0) ** 2) / ((W_int**2 / d[:, None]).sum(axis=0))
 
     return jnp.nan_to_num(G_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), m, df2
 
@@ -346,9 +348,11 @@ def r_squared(Y, X, C, *args, **kwargs):
     r2_vals = ss_mod / (ss_mod + df * mse)
     return jnp.nan_to_num(r2_vals, nan=0.0, posinf=1.0, neginf=0.0), matrix_rank(C), df
 
+
 """
 Zstat equivalent functions for each of the above.
 """
+
 
 @jit
 def t_z(Y, X, C):
@@ -357,10 +361,12 @@ def t_z(Y, X, C):
     """
     t_vals, df1, df2 = t(Y, X, C)
     # compute I_{v/(v+t²)}(v/2,1/2)
-    z2    = df2 / (df2 + t_vals**2)
-    ib    = betainc(df2/2, 0.5, z2)
+    z2 = df2 / (df2 + t_vals**2)
+    ib = betainc(df2 / 2, 0.5, z2)
     cdf_t = jnp.where(t_vals > 0, 1 - 0.5 * ib, 0.5 * ib)
-    cdf_t = jnp.clip(cdf_t, jnp.finfo(t_vals.dtype).eps, 1 - jnp.finfo(t_vals.dtype).eps)
+    cdf_t = jnp.clip(
+        cdf_t, jnp.finfo(t_vals.dtype).eps, 1 - jnp.finfo(t_vals.dtype).eps
+    )
     z_vals = norm.ppf(cdf_t)
     return jnp.nan_to_num(z_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), 1, df2
 
@@ -371,10 +377,12 @@ def aspin_welch_v_z(Y, X, C, groups, J_max):
     v→z via incomplete‐beta CDF and norm.ppf
     """
     v_vals, df1, df2 = aspin_welch_v(Y, X, C, groups, J_max)
-    z2    = df2 / (df2 + v_vals**2)
-    ib    = betainc(df2/2, 0.5, z2)
+    z2 = df2 / (df2 + v_vals**2)
+    ib = betainc(df2 / 2, 0.5, z2)
     cdf_v = jnp.where(v_vals > 0, 1 - 0.5 * ib, 0.5 * ib)
-    cdf_v = jnp.clip(cdf_v, jnp.finfo(v_vals.dtype).eps, 1 - jnp.finfo(v_vals.dtype).eps)
+    cdf_v = jnp.clip(
+        cdf_v, jnp.finfo(v_vals.dtype).eps, 1 - jnp.finfo(v_vals.dtype).eps
+    )
     z_vals = norm.ppf(cdf_v)
     return jnp.nan_to_num(z_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), 1, df2
 
@@ -387,15 +395,15 @@ def F_z(Y, X, C):
     F_vals, df1, df2 = F(Y, X, C)
 
     # CDF argument for F(df1,df2)
-    x     = (df1 * F_vals) / (df2 + df1 * F_vals)
+    x = (df1 * F_vals) / (df2 + df1 * F_vals)
     cdf_F = betainc(df1 / 2, df2 / 2, x)
 
     # guard boundaries
-    eps   = jnp.finfo(F_vals.dtype).eps
+    eps = jnp.finfo(F_vals.dtype).eps
     cdf_F = jnp.clip(cdf_F, eps, 1 - eps)
 
     # inverse‐normal
-    z     = norm.ppf(cdf_F)
+    z = norm.ppf(cdf_F)
     return jnp.nan_to_num(z, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), df1, df2
 
 
@@ -406,13 +414,14 @@ def G_z(Y, X, C, groups, J_max):
     """
     G_vals, df1, df2 = G(Y, X, C, groups, J_max)
 
-    x      = (df1 * G_vals) / (df2 + df1 * G_vals)
-    cdf_G  = betainc(df1/2, df2/2, x)
-    eps    = jnp.finfo(G_vals.dtype).eps
-    cdf_G  = jnp.clip(cdf_G, eps, 1 - eps)
+    x = (df1 * G_vals) / (df2 + df1 * G_vals)
+    cdf_G = betainc(df1 / 2, df2 / 2, x)
+    eps = jnp.finfo(G_vals.dtype).eps
+    cdf_G = jnp.clip(cdf_G, eps, 1 - eps)
     z_vals = norm.ppf(cdf_G)
 
     return jnp.nan_to_num(z_vals, nan=0.0, posinf=jnp.inf, neginf=-jnp.inf), df1, df2
+
 
 @jit
 def fisher_z(Y, X, C, *args, **kwargs):
@@ -465,3 +474,28 @@ def r_squared_z(Y, X, C, *args, **kwargs):
     """
     r2, df1, df2 = r_squared(Y, X, C)
     return norm.ppf(r2), df1, df2
+
+
+@jit
+def residualize_data(data, design_matrix):
+    """
+    Residualize data against a set of regressors.
+
+    Parameters
+    ----------
+    data : array, shape (n_samples, n_features)
+        Observed data (response).
+    design_matrix : array, shape (n_samples, n_regressors)
+        Nuisance or covariate regressors.
+
+    Returns
+    -------
+    residuals : array, shape (n_samples, n_features)
+        Unexplained variation (data minus predictions).
+    fitted_values : array, shape (n_samples, n_features)
+        Model predictions (ŷ) from the regressors.
+    """
+    coeffs = jnp.linalg.lstsq(design_matrix, data, rcond=None)[0]
+    fitted_values = design_matrix @ coeffs
+    residuals = data - fitted_values
+    return residuals, fitted_values

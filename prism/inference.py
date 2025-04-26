@@ -5,10 +5,11 @@ from statsmodels.stats.multitest import fdrcorrection
 from .loading import load_nifti_if_not_already_nifti, is_nifti_like, Dataset, load_data, prepare_glm_data
 from .stats import t, aspin_welch_v, F, G, pearson_r, r_squared
 from .stats import t_z, aspin_welch_v_z, F_z, G_z, fisher_z, r_squared_z
+from .stats import residualize_data
 from .tfce import apply_tfce
 from nilearn.maskers import NiftiMasker
 import nibabel as nib
-from jax import jit, random
+from jax import jit, random, numpy as jnp
 import warnings
 from typing import List, Optional, Union, Callable, Generator, Any, Tuple
 from sklearn.utils import Bunch
@@ -641,32 +642,45 @@ def spatial_correlation_permutation_analysis(
 
 
 @jit
-def flip_data(data, key):
-    n_samples = data.shape[0]
-    flip_signs = random.randint(key, (n_samples,), 0, 2) * 2 - 1  # Maps 0,1 to -1, +1.
-    return data * flip_signs[:, None]
+def flip_data_rows(data, key):
+    n = data.shape[0]
+    signs = random.randint(key, (n,), 0, 2) * 2 - 1
+    return data * signs[:, None]
 
+@jit
+def flip_data_groups(data, key, group_ids):
+    # group_ids: shape (n_samples,), int IDs for each row’s variance group
+    unique_ids, inv = jnp.unique(group_ids, return_inverse=True)
+    n_groups = unique_ids.shape[0]
+    group_signs = random.randint(key, (n_groups,), 0, 2) * 2 - 1
+    signs = group_signs[inv]                   # map each row → its group’s sign
+    return data * signs[:, None]
 
-def yield_sign_flipped_data(data, n_permutations, random_state):
+def yield_sign_flipped_data(data, n_permutations, random_state,
+                            group_ids=None, whole=False):
     """
-    Generator function that yields sign-flipped versions of the input data one by one.
+    Generator yielding sign-flipped versions of `data`.
 
-    Parameters:
-      data : array-like, shape (n_samples, n_elements_per_sample)
-          Input data matrix.
-      n_permutations : int
-          Number of sign-flipped permutations to generate.
-      random_state : int
-          Random seed for reproducibility.
-
-    Yields:
-      A sign-flipped version of data for each permutation.
+    If `group_ids` is provided and `whole=True`, then each unique group in 
+    `group_ids` gets one random ±1 flip and all rows with that ID are flipped together.
+    Otherwise flips each row independently as before.
     """
     key = random.PRNGKey(random_state)
+    if group_ids is not None:
+        group_ids = jnp.asarray(group_ids)
+
     for _ in range(n_permutations):
         key, subkey = random.split(key)
-        yield flip_data(data, subkey)
+        if whole and group_ids is not None:
+            yield flip_data_groups(data, subkey, group_ids)
+        else:
+            yield flip_data_rows(data, subkey)
 
+@jit
+def apply_freedman_lane_permutation(residuals, fitted_values, permutation_order):
+    """Apply Freedman–Lane: permute residuals, then add back the fit."""
+    permuted_resid = residuals[permutation_order, :]
+    return permuted_resid + fitted_values
 
 def yield_permuted_stats(data, design, contrast, stat_function, n_permutations, random_state, exchangeability_matrix=None, vg_auto=False, vg_vector=None, within=True, whole=False, flip_signs=False):
     """Generator function for permutation testing.
@@ -684,18 +698,29 @@ def yield_permuted_stats(data, design, contrast, stat_function, n_permutations, 
     flip_signs (Optional): If True, randomly flips the signs of the data for each permutation.
     """
     calculate = stat_function
-    permuted_design_generator = yield_permuted_design(design=design, n_permutations=n_permutations, contrast=contrast, exchangeability_matrix=exchangeability_matrix, within=within, whole=whole, random_state=random_state)
+
+    # Partition the model into regressors of interest and nuisance regressors
+    regressors_of_interest, nuisance_regressors, effective_contrast_overall, effective_contrast_interest = partition_model(design, contrast)
+    partitioned_design = np.hstack([regressors_of_interest, nuisance_regressors])
+
+    # Residualize data with respect to nuisance regressors
+    residuals, fitted_data = residualize_data(data, nuisance_regressors)
+
+    permuted_indices_generator = yield_permuted_indices(design=partitioned_design, n_permutations=n_permutations, contrast=contrast, exchangeability_matrix=exchangeability_matrix, within=within, whole=whole, random_state=random_state)
+    if ((exchangeability_matrix is not None and vg_auto) or (flip_signs and whole and exchangeability_matrix is not None)) and vg_vector is None:
+            vg_vector = get_vg_vector(exchangeability_matrix, within=within, whole=whole)
     if flip_signs:
-        sign_flipped_data_generator = yield_sign_flipped_data(data, n_permutations, random_state)
+        sign_flipped_data_generator = yield_sign_flipped_data(residuals, n_permutations, random_state, vg_vector=vg_vector, whole=whole)
+
     for i in range(n_permutations):
+        perm_indices = next(permuted_indices_generator)
         if flip_signs:
-            data = next(sign_flipped_data_generator)
+            residuals = next(sign_flipped_data_generator)
+        data = apply_freedman_lane_permutation(residuals, fitted_data, perm_indices)
         if (exchangeability_matrix is not None and vg_auto) or vg_vector:
-            if vg_vector is None:
-                vg_vector = get_vg_vector(exchangeability_matrix, within=within, whole=whole)
-            permuted_value, df1, df2 = calculate(data, next(permuted_design_generator), contrast, vg_vector, len(np.unique(vg_vector)))
+            permuted_value, df1, df2 = calculate(data, partitioned_design, effective_contrast_overall, vg_vector, len(np.unique(vg_vector)))
         else:
-            permuted_value, df1, df2 = calculate(data, next(permuted_design_generator), contrast)
+            permuted_value, df1, df2 = calculate(data, partitioned_design, effective_contrast_overall)
         yield permuted_value
 
 
@@ -810,7 +835,7 @@ def permute_indices_recursive(current_original_indices, level, eb_matrix, rng, p
                   return np.concatenate(permuted_indices_list)
 
 
-def yield_permuted_design(design, n_permutations, contrast=None, exchangeability_matrix=None, within=None, whole=None, random_state=None):
+def yield_permuted_indices(design, n_permutations, contrast=None, exchangeability_matrix=None, within=None, whole=None, random_state=None):
     """Generator for permuting the design matrix per PALM documentation.
 
     Handles free exchange, within-block, whole-block, combined within/whole,
@@ -992,7 +1017,7 @@ def yield_permuted_design(design, n_permutations, contrast=None, exchangeability
             design[:, contrast_indices] = design_subset
         else:
             design = design[permuted_row_indices, :]
-        yield design
+        yield permuted_row_indices
 
 
 def gpdpvals(exceedances, scale, shape):
@@ -1976,3 +2001,80 @@ def reverse_process_p_values(p_values, save_1minusp=False, save_neglog10p=False)
     # apply and restore shape/structure
     results = tuple(fn(np.asarray(p)) for p in inputs)
     return results[0] if is_single else results
+
+def partition_model(design, contrast):
+    """
+    Partition design matrix into regressors of interest and nuisances
+    using the Beckmann method defined by contrast.
+
+    Parameters
+    ----------
+    design : array, shape (n_samples, n_regressors) or (n_samples, n_regressors, n_nodes)
+        Design matrix. If 2D, treated as single “node” (t=1).
+    contrast : array, shape (n_regressors,) or (n_regressors, n_contrasts)
+        Contrast vector or matrix.
+
+    Returns
+    -------
+    regressors_of_interest : array, shape (n_samples, n_contrasts[, n_nodes])
+        Regressors of interest.
+    nuisance_regressors : array, shape (n_samples, n_regressors - n_contrasts[, n_nodes])
+        Nuisance regressors.
+    effective_contrast_overall : array, shape (n_contrasts, n_regressors)
+        Effective contrast for [regressors_of_interest, nuisance_regressors].
+    effective_contrast_interest : array, shape (n_contrasts, n_contrasts)
+        Effective contrast for regressors_of_interest only.
+    """
+    design = np.asarray(design)
+    if design.ndim == 2:
+        design = design[:, :, None]
+    n, p, t = design.shape
+
+    contrast = np.asarray(contrast)
+    if contrast.ndim == 1:
+        contrast = contrast[:, None]
+    elif contrast.ndim == 2 and contrast.shape[0] != p and contrast.shape[1] == p:
+        contrast = contrast.T
+    if contrast.ndim != 2 or contrast.shape[0] != p:
+        raise ValueError(f"Contrast must be shape ({p}, q), got {contrast.shape}")
+    q = contrast.shape[1]
+
+    def null_space(A, tol=None):
+        U, s, Vh = np.linalg.svd(A, full_matrices=True)
+        if tol is None:
+            tol = max(A.shape) * np.finfo(s.dtype).eps * s[0]
+        rank = (s > tol).sum()
+        return Vh[rank:].T
+
+    Cu = null_space(contrast.T)              # (p, p-q)
+    r_nuis = Cu.shape[1]
+
+    regressors_of_interest = np.zeros((n, q, t), dtype=design.dtype)
+    nuisance_regressors    = np.zeros((n, r_nuis, t), dtype=design.dtype)
+
+    for i in range(t):
+        Di = design[:, :, i]
+        D   = np.linalg.pinv(Di.T @ Di)
+        CDC = contrast.T @ D @ contrast
+        CDCi = np.linalg.pinv(CDC)
+        Pc  = contrast @ CDCi @ contrast.T @ D
+        Cv  = Cu - Pc @ Cu
+        F3  = np.linalg.pinv(Cv.T @ D @ Cv)
+
+        regressors_of_interest[:, :, i] = Di @ D @ contrast @ CDCi
+        nuisance_regressors   [:, :, i] = Di @ D @ Cv @ F3
+
+    # build and transpose effective contrasts
+    effective_contrast_overall  = np.vstack([np.eye(q), np.zeros((r_nuis, q))]).T  # (q, p)
+    effective_contrast_interest = effective_contrast_overall[:, :q]                 # (q, q)
+
+    if t == 1:
+        regressors_of_interest = regressors_of_interest[:, :, 0]
+        nuisance_regressors    = nuisance_regressors   [:, :, 0]
+
+    return (
+        regressors_of_interest,
+        nuisance_regressors,
+        effective_contrast_overall,
+        effective_contrast_interest
+    )
