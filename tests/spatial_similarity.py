@@ -1,13 +1,13 @@
 import unittest
 import numpy as np
 from prism.loading import Dataset
-from prism.inference import spatial_correlation_permutation_analysis
+from prism.spatial_similarity import spatial_similarity_permutation_analysis
 from prism.stats import t
 import numpy.testing as npt
 from sklearn.utils import Bunch
 
 
-class TestSpatialCorrelationAnalysis(unittest.TestCase):
+class TestSpatialSimilarityAnalysis(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
@@ -50,7 +50,7 @@ class TestSpatialCorrelationAnalysis(unittest.TestCase):
 
     def test_case_1_two_datasets_no_refs(self):
         """Case 1: 2 Datasets, 0 Reference Maps."""
-        results = spatial_correlation_permutation_analysis(
+        results = spatial_similarity_permutation_analysis(
             datasets=[self.ds1, self.ds2], reference_maps=None, two_tailed=True)
         self.assertIsInstance(results, Bunch)
         expected_perms = min(self.ds1.n_permutations, self.ds2.n_permutations)
@@ -72,7 +72,7 @@ class TestSpatialCorrelationAnalysis(unittest.TestCase):
 
     def test_case_2_three_datasets_no_refs(self):
         """Case 2: 3 Datasets, 0 Reference Maps."""
-        results = spatial_correlation_permutation_analysis(
+        results = spatial_similarity_permutation_analysis(
             datasets=[self.ds1, self.ds2, self.ds3], reference_maps=None, two_tailed=True)
         self.assertIsInstance(results, Bunch)
         expected_perms = min(self.ds1.n_permutations, self.ds2.n_permutations, self.ds3.n_permutations)
@@ -94,7 +94,7 @@ class TestSpatialCorrelationAnalysis(unittest.TestCase):
     def test_case_3_one_dataset_one_ref(self):
         """Case 3: 1 Dataset, 1 Reference Map."""
         # Note: Pass dataset as a list for consistency, even if single
-        results = spatial_correlation_permutation_analysis(
+        results = spatial_similarity_permutation_analysis(
             datasets=[self.ds1], reference_maps=self.ref1, two_tailed=True)
         self.assertIsInstance(results, Bunch)
         expected_perms = self.ds1.n_permutations
@@ -115,7 +115,7 @@ class TestSpatialCorrelationAnalysis(unittest.TestCase):
 
     def test_case_4_one_dataset_two_refs(self):
         """Case 4: 1 Dataset, 2 Reference Maps."""
-        results = spatial_correlation_permutation_analysis(
+        results = spatial_similarity_permutation_analysis(
             datasets=[self.ds1], reference_maps=[self.ref1, self.ref2], two_tailed=True)
         self.assertIsInstance(results, Bunch)
         expected_perms = self.ds1.n_permutations
@@ -136,7 +136,7 @@ class TestSpatialCorrelationAnalysis(unittest.TestCase):
 
     def test_case_5_two_datasets_two_refs(self):
         """Case 5: 2 Datasets, 2 Reference Maps."""
-        results = spatial_correlation_permutation_analysis(
+        results = spatial_similarity_permutation_analysis(
             datasets=[self.ds1, self.ds2], reference_maps=[self.ref1, self.ref2], two_tailed=True)
         self.assertIsInstance(results, Bunch)
         expected_perms = min(self.ds1.n_permutations, self.ds2.n_permutations)
@@ -161,7 +161,7 @@ class TestSpatialCorrelationAnalysis(unittest.TestCase):
     def test_case_6_one_dataset_no_refs_should_warn_and_return_defaults(self):
         """Case 6: 1 Dataset, 0 Refs (should warn and return Bunch of Nones)."""
         with self.assertWarnsRegex(UserWarning, "Insufficient inputs"):
-             results = spatial_correlation_permutation_analysis(
+             results = spatial_similarity_permutation_analysis(
                  datasets=[self.ds1], reference_maps=None, two_tailed=True) # Use list
 
         # Expect the default Bunchionary with None values because setup failed
@@ -172,7 +172,7 @@ class TestSpatialCorrelationAnalysis(unittest.TestCase):
         """Case 7: 0 Datasets, 1 Reference Map (should raise ValueError)."""
         # Expect ValueError from _setup_and_validate, re-raised by run_analysis/wrapper
         with self.assertRaisesRegex(ValueError, "Dataset list cannot be empty"):
-            spatial_correlation_permutation_analysis(
+            spatial_similarity_permutation_analysis(
                 datasets=[], reference_maps=[self.ref1], two_tailed=True)
 
     def test_case_8_custom_compare_func(self):
@@ -180,7 +180,7 @@ class TestSpatialCorrelationAnalysis(unittest.TestCase):
         def simple_dot_product(vec1, vec2):
             return np.dot(vec1, vec2)
 
-        results = spatial_correlation_permutation_analysis(
+        results = spatial_similarity_permutation_analysis(
             datasets=[self.ds1, self.ds2],
             reference_maps=[self.ref1],
             two_tailed=True, # P-value interpretation depends on function range
