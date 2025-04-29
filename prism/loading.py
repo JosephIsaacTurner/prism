@@ -658,4 +658,4 @@ class ResultSaver:
             else:
                 save_key = renamed_key
             updated_results[save_key] = val
-        return results
+        return updated_results
