@@ -5,8 +5,9 @@ import re
 import numpy as np
 import nibabel as nib
 from nilearn.maskers import NiftiMasker
-from .loading import load_data, is_nifti_like, ResultSaver
-from .inference import permutation_analysis, permutation_analysis_volumetric_dense
+from .datasets import Dataset
+from .data_wrangling import load_data, is_nifti_like
+from .permutation_inference import permutation_analysis, permutation_analysis_volumetric_dense
 
 NON_IMPLEMENTED_ARGS = [
     "-s",
@@ -114,7 +115,7 @@ def setup_parser():
     )
     parser.add_argument(
         "-eb",
-        "--exchangeability_blocks",
+        "--exchangeability_matrix",
         help="Exchangeability blocks file (.csv or .npy)",
     )
     parser.add_argument(
@@ -288,9 +289,9 @@ def validate_args(args):
             sys.exit("Error: F-contrast indices file must be .csv or .npy format")
 
     # Check exchangeability blocks file if provided
-    if args.exchangeability_blocks and not os.path.exists(args.exchangeability_blocks):
+    if args.exchangeability_matrix and not os.path.exists(args.exchangeability_matrix):
         sys.exit(
-            f"Error: Exchangeability blocks file '{args.exchangeability_blocks}' does not exist"
+            f"Error: Exchangeability blocks file '{args.exchangeability_matrix}' does not exist"
         )
 
     # Handle variance groups. Can be either None, a path to a csv/npy, or "auto". If a file, let's load it.
@@ -394,6 +395,42 @@ def main():
     print(f"Number of permutations: {args.n_permutations}")
     print(f"Output prefix: {args.output}")
 
+
+    output_prefix = get_output_path(args.output)
+
+    stat_function = "auto" if not args.pearson_r else "pearson"
+    f_stat_function = "auto" if not args.pearson_r else "pearson"
+
+    dataset = Dataset(
+        data=args.input,
+        design=args.design,
+        contrast=args.contrast,
+        output_prefix=output_prefix,
+        f_contrast_indices=args.f_contrast_indices,
+        two_tailed=args.two_tailed,
+        exchangeability_matrix=args.exchangeability_matrix,
+        vg_auto=True if args.variance_groups == "auto" else False,
+        variance_groups=args.variance_groups,
+        within=args.within,
+        whole=args.whole,
+        flip_signs=args.flip_signs,
+        stat_function=stat_function,
+        f_stat_function=f_stat_function,
+        f_only=args.f_only,
+        n_permutations=args.n_permutations,
+        accel_tail=args.accel,
+        save_1minusp=args.save1_p,
+        save_neglog10p=args.logp,
+        correct_across_contrasts=args.correct_across_contrasts,
+        random_state=args.random_state,
+        demean=args.demean,
+        zstat=args.zstat,
+        save_permutations=args.save_permutations,
+        mask_img=args.mask,
+        tfce=args.tfce
+    )
+    dataset.save_config()
+
     # Continue with the actual processing...
     # Your PALM implementation code would go here
     data = load_data(args.input)
@@ -407,11 +444,6 @@ def main():
         f_contrast_indices = None
 
     input_is_nifti_like = is_nifti_like(data)
-
-    output_prefix = get_output_path(args.output)
-
-    stat_function = "auto" if not args.pearson_r else "pearson"
-    f_stat_function = "auto" if not args.pearson_r else "pearson"
 
     if input_is_nifti_like:
         print("Input data is NIfTI-like. Using volumetric dense analysis.")
@@ -431,12 +463,12 @@ def main():
             random_state=args.random_state,
             two_tailed=args.two_tailed,
             exchangeability_matrix=(
-                load_data(args.exchangeability_blocks)
-                if args.exchangeability_blocks
+                load_data(args.exchangeability_matrix)
+                if args.exchangeability_matrix
                 else None
             ),
             vg_auto=True if args.variance_groups == "auto" else False,
-            vg_vector=(
+            variance_groups=(
                 load_data(args.variance_groups)
                 if (args.variance_groups is not None and args.variance_groups != "auto")
                 else None
@@ -468,12 +500,12 @@ def main():
             random_state=args.random_state,
             two_tailed=args.two_tailed,
             exchangeability_matrix=(
-                load_data(args.exchangeability_blocks)
-                if args.exchangeability_blocks
+                load_data(args.exchangeability_matrix)
+                if args.exchangeability_matrix
                 else None
             ),
             vg_auto=True if args.variance_groups == "auto" else False,
-            vg_vector=(
+            variance_groups=(
                 load_data(args.variance_groups)
                 if (args.variance_groups is not None and args.variance_groups != "auto")
                 else None

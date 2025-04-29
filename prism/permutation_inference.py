@@ -6,7 +6,8 @@ from sklearn.utils import Bunch
 from statsmodels.stats.multitest import fdrcorrection
 from tqdm import tqdm
 from nilearn.maskers import NiftiMasker
-from .loading import load_nifti_if_not_already_nifti, prepare_glm_data, ResultSaver
+from .data_wrangling import load_nifti_if_not_already_nifti, ResultSaver
+from .preprocessing import demean_glm_data
 from .stats import (
     t, aspin_welch_v, F, G, pearson_r, r_squared,
     t_z, aspin_welch_v_z, F_z, G_z, fisher_z, r_squared_z,
@@ -25,7 +26,7 @@ def permutation_analysis(
     two_tailed=True,
     exchangeability_matrix=None,
     vg_auto=False,
-    vg_vector=None,
+    variance_groups=None,
     within=True,
     whole=False,
     flip_signs=False,
@@ -78,7 +79,7 @@ def permutation_analysis(
         Block structure for permutation; shape (n_samples,) or (n_samples, n_groups).
     vg_auto : bool, default False
         If True, auto-derive variance-group labels from `exchangeability_matrix`.
-    vg_vector : np.ndarray or None
+    variance_groups : np.ndarray or None
         Predefined variance-group labels for each sample.
     within : bool, default True
         When `exchangeability_matrix` is 1D, permute within blocks.
@@ -88,7 +89,7 @@ def permutation_analysis(
         If True, also sign-flip residuals (assumes symmetric errors).
     stat_function : callable or 'auto', default 'auto'
         Function to compute per-contrast test statistics (e.g., t).  
-        Signature: `stat, df1, df2 = stat_function(data, design, contrast[, vg_vector, n_groups])`
+        Signature: `stat, df1, df2 = stat_function(data, design, contrast[, variance_groups, n_groups])`
     f_stat_function : callable or 'auto', default 'auto'
         Function to compute F-statistics. Same signature as `stat_function`.
     f_only : bool, default False
@@ -134,7 +135,7 @@ def permutation_analysis(
     Notes
     -----
     - F-tests are one-tailed by construction; `two_tailed` is ignored for F-statistics.
-    - When using variance groups (`vg_auto` or `vg_vector`), ensure your stat functions support them.
+    - When using variance groups (`vg_auto` or `variance_groups`), ensure your stat functions support them.
     """
     # Step Zero: Check inputs and setup
     if n_permutations <= 0:
@@ -207,7 +208,7 @@ def permutation_analysis(
         # No F-test by default if multiple contrasts and no indices
 
     if demean:
-        data, design, contrast, f_contrast_indices = prepare_glm_data(
+        data, design, contrast, f_contrast_indices = demean_glm_data(
             data, design, contrast, f_contrast_indices
         )
 
@@ -263,72 +264,48 @@ def permutation_analysis(
             contrasts[f"c{i+1}"] = np.atleast_2d(original_contrast[i, :])
     if perform_f_test:
         contrasts["f"] = np.atleast_2d(f_contrast)
+
     contrast_labels = list(contrasts.keys())
 
     # Determine variance groups if needed
     use_variance_groups = (exchangeability_matrix is not None and vg_auto) or (
-        vg_vector is not None
+        variance_groups is not None
     )
-    calculated_vg_vector = None
+    calculated_variance_groups = None
     n_groups = None
     if use_variance_groups:
-        if vg_vector is not None:
-            calculated_vg_vector = np.asarray(vg_vector)
-            if calculated_vg_vector.shape[0] != data.shape[0]:
+        if variance_groups is not None:
+            calculated_variance_groups = np.asarray(variance_groups)
+            if calculated_variance_groups.shape[0] != data.shape[0]:
                 raise ValueError(
-                    "Provided vg_vector length must match number of samples"
+                    "Provided variance_groups length must match number of samples"
                 )
         else:  # vg_auto is True and exchangeability_matrix is not None
-            calculated_vg_vector = get_vg_vector(
+            calculated_variance_groups = get_vg_vector(
                 exchangeability_matrix, within=within, whole=whole
             )
-        n_groups = len(np.unique(calculated_vg_vector))
+        n_groups = len(np.unique(calculated_variance_groups))
         if n_groups <= 1:
             warnings.warn(
                 "Variance groups were requested or auto-detected, but only one group was found. Standard statistics will be used."
             )
             use_variance_groups = False  # Revert to standard stats
-            calculated_vg_vector = None
+            calculated_variance_groups = None
             n_groups = None
 
     # Determine which stat functions to use
-    actual_stat_function = None
-    if stat_function == "auto":
-        if not zstat:
-            actual_stat_function = aspin_welch_v if use_variance_groups else t
-        else:
-            actual_stat_function = aspin_welch_v_z if use_variance_groups else t_z
-    elif stat_function == "pearson":
-        if not zstat:
-            actual_stat_function = pearson_r
-        else:
-            actual_stat_function = fisher_z
-    elif callable(stat_function):
-        actual_stat_function = stat_function
-    else:
-        raise ValueError("stat_function must be 'auto' or a callable function")
-
-    actual_f_stat_function = None
-    if perform_f_test:
-        if f_stat_function == "auto":
-            if not zstat:
-                actual_f_stat_function = G if use_variance_groups else F
-            else:
-                actual_f_stat_function = G_z if use_variance_groups else F_z
-        elif f_stat_function == "pearson":
-            if not zstat:
-                actual_f_stat_function = r_squared
-            else:
-                actual_f_stat_function = r_squared_z
-        elif callable(f_stat_function):
-            actual_f_stat_function = f_stat_function
-        else:
-            raise ValueError("f_stat_function must be 'auto' or a callable function")
+    actual_stat_function, actual_f_stat_function = select_stat_functions(
+        stat_function=stat_function,
+        f_stat_function=f_stat_function,
+        use_variance_groups=use_variance_groups,
+        zstat=zstat,
+        perform_f_test=perform_f_test,
+    )
 
     # Initialize saver object
     results_saver = ResultSaver(
         output_prefix=output_prefix,
-        variance_groups=calculated_vg_vector if use_variance_groups else None,
+        variance_groups=calculated_variance_groups if use_variance_groups else None,
         stat_function=stat_function,
         f_stat_function=f_stat_function,
         zstat=zstat,
@@ -377,7 +354,7 @@ def permutation_analysis(
                 data,
                 effective_design_,
                 effective_contrast_overall_,
-                calculated_vg_vector,
+                calculated_variance_groups,
                 n_groups,
             )
         else:
@@ -416,20 +393,22 @@ def permutation_analysis(
         exceedances = np.zeros_like(observed_stats, dtype=float)
         max_stat_dist = np.zeros(n_permutations)
 
+
         permutation_generator = yield_permuted_stats(
             data,
             design,
             contrast,  # Pass the current contrast
-            stat_function=actual_stat_function,
+            stat_function=stat_function_,
             n_permutations=n_permutations,
-            random_state=random_state + i,  # Offset seed for different contrasts
+            random_state=random_state + current_idx,
             exchangeability_matrix=exchangeability_matrix,
             vg_auto=vg_auto,  # Pass vg_auto for generator's internal logic if needed
-            vg_vector=calculated_vg_vector,  # Pass calculated vector
+            variance_groups=calculated_variance_groups,  # Pass calculated vector
             within=within,
             whole=whole,
             flip_signs=flip_signs,
         )
+
 
         for i in tqdm(range(n_permutations), desc=f"Permuting {label}", leave=False):
 
@@ -564,7 +543,7 @@ def permutation_analysis_volumetric_dense(
     two_tailed=True,
     exchangeability_matrix=None,
     vg_auto=False,
-    vg_vector=None,
+    variance_groups=None,
     within=True,
     whole=False,
     flip_signs=False,
@@ -607,7 +586,7 @@ def permutation_analysis_volumetric_dense(
         Defines permutation blocks. 1D shape `(n_samples,)` or 2D shape `(n_samples, n_groups)`.
     vg_auto : bool, default False
         If True, derive variance-group labels automatically from `exchangeability_matrix`.
-    vg_vector : np.ndarray or None
+    variance_groups : np.ndarray or None
         Explicit variance-group labels per sample; overrides `vg_auto`.
     within : bool, default True
         When using a 1D exchangeability vector, permute within each block.
@@ -617,7 +596,7 @@ def permutation_analysis_volumetric_dense(
         If True, also randomly flip residual signs (assumes symmetric errors).
     stat_function : callable or 'auto', default 'auto'
         Function to compute per-contrast test statistics (e.g., t-values).  
-        Signature: `stat, df1, df2 = stat_function(data, design, contrast[, vg_vector, n_groups])`
+        Signature: `stat, df1, df2 = stat_function(data, design, contrast[, variance_groups, n_groups])`
     f_stat_function : callable or 'auto', default 'auto'
         Function to compute F-statistics. Same signature as `stat_function`.
     f_only : bool, default False
@@ -664,8 +643,11 @@ def permutation_analysis_volumetric_dense(
         )
         masker = NiftiMasker()
     else:
-        masker = NiftiMasker(mask_img=mask_img)
-    data = masker.fit_transform(imgs)
+        masker = NiftiMasker(mask_img=mask_img).fit()
+    if not isinstance(imgs, np.ndarray):
+        data = masker.fit_transform(imgs)
+    else:
+        data = imgs
     mask_img = masker.mask_img_
     n_t_contrasts = np.atleast_2d(contrast).shape[0]
 
@@ -684,7 +666,7 @@ def permutation_analysis_volumetric_dense(
         )
         tfce_result_saver = ResultSaver(
             output_prefix=output_prefix,
-            variance_groups=(vg_auto or vg_vector is not None),
+            variance_groups=(vg_auto or variance_groups is not None),
             stat_function=stat_function,
             f_stat_function=f_stat_function,
             zstat=zstat,
@@ -753,7 +735,7 @@ def permutation_analysis_volumetric_dense(
         two_tailed=two_tailed,
         exchangeability_matrix=exchangeability_matrix,
         vg_auto=vg_auto,
-        vg_vector=vg_vector,
+        variance_groups=variance_groups,
         within=within,
         whole=whole,
         flip_signs=flip_signs,
@@ -1011,7 +993,7 @@ def yield_permuted_stats(
     random_state=42,
     exchangeability_matrix=None,
     vg_auto=False,
-    vg_vector=None,
+    variance_groups=None,
     within=True,
     whole=False,
     flip_signs=False,
@@ -1040,7 +1022,7 @@ def yield_permuted_stats(
             Contrast vector(s).
         stat_function (callable):
             Function to compute the test statistic. Signature:
-                stat, df1, df2 = stat_function(data, design, contrast[, vg_vector, n_groups])
+                stat, df1, df2 = stat_function(data, design, contrast[, variance_groups, n_groups])
         n_permutations (int):
             Number of permutations.
         random_state (int):
@@ -1048,8 +1030,8 @@ def yield_permuted_stats(
         exchangeability_matrix (array, optional):
             Defines exchangeable blocks.
         vg_auto (bool):
-            If True, derive vg_vector automatically from exchangeability_matrix.
-        vg_vector (array, optional):
+            If True, derive variance_groups automatically from exchangeability_matrix.
+        variance_groups (array, optional):
             Precomputed variance-group labels.
         within (bool):
             Permute within blocks when using 1D exchangeability.
@@ -1079,15 +1061,15 @@ def yield_permuted_stats(
         random_state=random_state,
     )
 
-    if exchangeability_matrix is not None and vg_auto and vg_vector is None:
-        vg_vector = get_vg_vector(exchangeability_matrix, within=within, whole=whole)
+    if exchangeability_matrix is not None and vg_auto and variance_groups is None:
+        variance_groups = get_vg_vector(exchangeability_matrix, within=within, whole=whole)
 
     if flip_signs:
         sign_flip_gen = yield_sign_flipped_data(
             base_residuals,
             n_permutations,
             random_state,
-            vg_vector=vg_vector,
+            variance_groups=variance_groups,
             whole=whole,
         )
 
@@ -1105,10 +1087,10 @@ def yield_permuted_stats(
         )
 
         # 4. Compute statistic, with vg info if provided
-        if vg_vector is not None:
-            n_groups = len(np.unique(vg_vector))
+        if variance_groups is not None:
+            n_groups = len(np.unique(variance_groups))
             stat, df1, df2 = stat_function(
-                permuted_data, full_design, C_eff, vg_vector, n_groups
+                permuted_data, full_design, C_eff, variance_groups, n_groups
             )
         else:
             stat, df1, df2 = stat_function(permuted_data, full_design, C_eff)
@@ -1359,3 +1341,46 @@ def reverse_process_p_values(p_values, save_1minusp=False, save_neglog10p=False)
     results = tuple(fn(np.asarray(p)) for p in inputs)
     return results[0] if is_single else results
 
+
+def select_stat_functions(
+    stat_function="auto",
+    f_stat_function="auto",
+    use_variance_groups=False,
+    zstat=False,
+    perform_f_test=True,
+):
+    """
+    Return (actual_t_stat_fn, actual_f_stat_fn) based on:
+      - stat_function ∈ {"auto", "pearson"} or a callable
+      - f_stat_function ∈ {"auto", "pearson"} or a callable
+      - use_variance_groups, zstat, perform_f_test
+    """
+    # ─── pick the “t‐like” function ─────────────────────────────────
+    if stat_function == "auto":
+        if not zstat:
+            actual_t = aspin_welch_v if use_variance_groups else t
+        else:
+            actual_t = aspin_welch_v_z if use_variance_groups else t_z
+    elif stat_function == "pearson":
+        actual_t = fisher_z if zstat else pearson_r
+    elif callable(stat_function):
+        actual_t = stat_function
+    else:
+        raise ValueError("stat_function must be 'auto', 'pearson', or a callable")
+
+    # ─── pick the “F‐like” function ─────────────────────────────────
+    if not perform_f_test:
+        actual_f = None
+    elif f_stat_function == "auto":
+        if not zstat:
+            actual_f = G if use_variance_groups else F
+        else:
+            actual_f = G_z if use_variance_groups else F_z
+    elif f_stat_function == "pearson":
+        actual_f = r_squared_z if zstat else r_squared
+    elif callable(f_stat_function):
+        actual_f = f_stat_function
+    else:
+        raise ValueError("f_stat_function must be 'auto', 'pearson', or a callable")
+
+    return actual_t, actual_f

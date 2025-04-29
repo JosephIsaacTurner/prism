@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from prism.inference import get_vg_vector
+from prism.permutation_logic import get_vg_vector
 
 
 class TestGetVgVector(unittest.TestCase):

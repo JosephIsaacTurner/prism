@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from prism.inference import permutation_analysis
+from prism.permutation_inference import permutation_analysis
 import re
 
 
@@ -109,7 +109,7 @@ class TestPermutationAnalysis(unittest.TestCase):
             "stat_function": 'auto',
         })
         results = permutation_analysis(**params)
-        unc_p, fdr_p, fwe_p = results.stat_uncp_c1, results.stat_fdrp_c1, results.stat_fwep_c1
+        unc_p, fdr_p, fwe_p = results.tstat_uncp, results.tstat_fdrp, results.tstat_fwep
         self._check_outputs(unc_p, fdr_p, fwe_p, "Case 1 (1D t-stat)")
 
     def test_case2_pseudo_1d_contrast_t_stat(self):
@@ -121,16 +121,8 @@ class TestPermutationAnalysis(unittest.TestCase):
         })
         # Expect this to work like the 1D case
         results = permutation_analysis(**params)
-        unc_p, fdr_p, fwe_p = results.stat_uncp_c1, results.stat_fdrp_c1, results.stat_fwep_c1
+        unc_p, fdr_p, fwe_p = results.tstat_uncp, results.tstat_fdrp, results.tstat_fwep
         self._check_outputs(unc_p, fdr_p, fwe_p, "Case 2 (Pseudo-1D t-stat)")
-
-        # Optional: Compare results to case 1 (should be identical or very close)
-        # params_1d = self.common_params.copy()
-        # params_1d.update({"contrast": self.contrast_1d, "stat_function": t})
-        # unc_p1, _, _ = permutation_analysis(**params_1d)
-        # np.testing.assert_allclose(unc_p, unc_p1, rtol=1e-6, atol=1e-6,
-        #                            err_msg="Pseudo-1D and 1D results differ significantly")
-
 
     def test_case3_2d_contrast_F_stat(self):
         """3: Test 2D contrast (ANOVA-like) with F-statistic."""
@@ -143,7 +135,7 @@ class TestPermutationAnalysis(unittest.TestCase):
             "f_only": True
         })
         results = permutation_analysis(**params)
-        unc_p, fdr_p, fwe_p = results.stat_uncp_f, results.stat_fdrp_f, results.stat_fwep_f
+        unc_p, fdr_p, fwe_p = results.fstat_uncp_f, results.fstat_fdrp_f, results.fstat_fwep_f
         self._check_outputs(unc_p, fdr_p, fwe_p, "Case 3 (2D F-stat)")
 
     def test_case4_1d_contrast_aspinwelch_exchangeability(self):
@@ -157,7 +149,7 @@ class TestPermutationAnalysis(unittest.TestCase):
             "vg_auto": True
         })
         results = permutation_analysis(**params)
-        unc_p, fdr_p, fwe_p = results.stat_uncp_c1, results.stat_fdrp_c1, results.stat_fwep_c1
+        unc_p, fdr_p, fwe_p = results.vstat_uncp, results.vstat_fdrp, results.vstat_fwep
         self._check_outputs(unc_p, fdr_p, fwe_p, "Case 4 (1D Aspin-Welch Exch.)")
 
     def test_case5_2d_contrast_G_stat_exchangeability(self):
@@ -174,7 +166,7 @@ class TestPermutationAnalysis(unittest.TestCase):
             "f_only": True
         })
         results = permutation_analysis(**params)
-        unc_p, fdr_p, fwe_p = results.stat_uncp_f, results.stat_fdrp_f, results.stat_fwep_f
+        unc_p, fdr_p, fwe_p = results.gstat_uncp_f, results.gstat_fdrp_f, results.gstat_fwep_f
         self._check_outputs(unc_p, fdr_p, fwe_p, "Case 5 (2D G-stat Exch.)")
 
     # --- Error Cases ---

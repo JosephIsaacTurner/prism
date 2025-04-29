@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from prism.inference import yield_permuted_indices
+from prism.permutation_logic import yield_permuted_indices
 
 
 class TestYieldPermutedDesignRevised(unittest.TestCase):

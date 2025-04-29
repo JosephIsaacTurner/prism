@@ -1,5 +1,6 @@
-from .loading import Dataset, is_nifti_like, load_data, load_nifti_if_not_already_nifti
-from .inference import yield_permuted_stats
+from .data_wrangling import is_nifti_like, load_data, load_nifti_if_not_already_nifti
+from .datasets import Dataset
+from .permutation_inference import yield_permuted_stats, compute_p_values_accel_tail
 from .permutation_logic import get_vg_vector
 import nibabel as nib
 import numpy as np
@@ -145,6 +146,7 @@ class _SpatialCorrelationAnalysis:
             try:
                 # Assumes ds.load_data() is implemented in the Dataset class
                 ds.load_data()
+                ds.select_stat_functions()
                 if ds.data is None:
                     raise RuntimeError("Dataset.data is None after loading.")
             except Exception as e:
@@ -309,28 +311,35 @@ class _SpatialCorrelationAnalysis:
                     f"Dataset {i+1} missing components for stat calculation."
                 )
 
-            stat_args = [dataset.data, dataset.design, dataset.contrast]
+            if dataset.f_only:
+                stat_function = dataset.f_stat_function
+                contrast = dataset.contrast[dataset.f_contrast_indices.astype(bool), :] if dataset.f_contrast_indices is not None else dataset.contrast
+            else:
+                stat_function = dataset.stat_function
+                contrast = dataset.contrast[0, :] # Use only the first contrast
+
+            stat_args = [dataset.data, dataset.design, contrast]
             # Handle variance groups if specified
-            effective_vg_vector = dataset.vg_vector
+            effective_variance_groups = dataset.variance_groups
             if (
-                effective_vg_vector is None
+                effective_variance_groups is None
                 and dataset.exchangeability_matrix is not None
                 and dataset.vg_auto
             ):
-                # Assumes get_vg_vector is available
-                effective_vg_vector = get_vg_vector(
+                # Assumes get_variance_groups is available
+                effective_variance_groups = get_vg_vector(
                     dataset.exchangeability_matrix,
                     within=dataset.within,
                     whole=dataset.whole,
                 )
-            if effective_vg_vector is not None:
-                n_groups = len(np.unique(effective_vg_vector))
+            if effective_variance_groups is not None:
+                n_groups = len(np.unique(effective_variance_groups))
                 stat_args.extend(
-                    [effective_vg_vector, n_groups]
+                    [effective_variance_groups, n_groups]
                 )  # Assumes stat_func signature adapts
 
             # Calculate stats
-            true_stats_raw = dataset.stat_function(*stat_args)[0]
+            true_stats_raw = stat_function(*stat_args)[0]
             true_stats_flat = true_stats_raw.ravel()
 
             # Validate shape
@@ -467,16 +476,25 @@ class _SpatialCorrelationAnalysis:
             ):
                 raise ValueError(f"Dataset {i+1} missing components for permutation.")
             # Assumes yield_permuted_stats exists and handles these args
+
+            if dataset.f_only:
+                stat_function = dataset.f_stat_function
+                contrast = dataset.contrast[dataset.f_contrast_indices.astype(bool), :] if dataset.f_contrast_indices is not None else dataset.contrast
+            else:
+                stat_function = dataset.stat_function
+                contrast = dataset.contrast[0, :] # Use only the first contrast
+
+
             dataset.permuted_stat_generator = yield_permuted_stats(
                 data=dataset.data,
                 design=dataset.design,
-                contrast=dataset.contrast,
-                stat_function=dataset.stat_function,
+                contrast=contrast,
+                stat_function=stat_function,
                 n_permutations=self.n_permutations,
                 random_state=dataset.random_state,
                 exchangeability_matrix=dataset.exchangeability_matrix,
                 vg_auto=dataset.vg_auto,
-                vg_vector=dataset.vg_vector,
+                variance_groups=dataset.variance_groups,
                 within=dataset.within,
                 whole=dataset.whole,
                 flip_signs=dataset.flip_signs,

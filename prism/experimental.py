@@ -1,7 +1,8 @@
-from .loading import generate_null_data_vector, get_data_vector_and_coord_matrix
+from .datasets import generate_null_data_vector
+from .preprocessing import get_data_vector_and_coord_matrix
 import numpy as np
 from tqdm import tqdm
-from nilearn.input_data import NiftiMasker
+from nilearn.maskers import NiftiMasker
 from copy import deepcopy
 import nibabel as nib
 import matplotlib.pyplot as plt

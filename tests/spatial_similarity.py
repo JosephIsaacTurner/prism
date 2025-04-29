@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from prism.loading import Dataset
+from prism.datasets import Dataset
 from prism.spatial_similarity import spatial_similarity_permutation_analysis
 from prism.stats import t
 import numpy.testing as npt
