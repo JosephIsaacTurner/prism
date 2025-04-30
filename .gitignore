@@ -1,6 +1,8 @@
 testing_outputs/
+testing_outputs_2/
 .DS_Store
 .*
+notebooks/testing.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

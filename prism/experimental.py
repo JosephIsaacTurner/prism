@@ -8,6 +8,7 @@ import nibabel as nib
 import matplotlib.pyplot as plt
 from scipy.stats import zscore
 from hilbertcurve.hilbertcurve import HilbertCurve
+from nibabel.affines import apply_affine
 
 
 """
@@ -432,3 +433,39 @@ def unravel_atlas(atlas, mask_img, background_value=0):
     ordered_parcel_vector[ordered_parcel_vector == proxy_background_value] = background_value
     ordered_parcel_coords = coords[order]
     return ordered_parcel_vector, ordered_parcel_coords, order, inverse_order
+
+
+def get_data_vector_and_coord_matrix(img, mask_img):
+    """
+    For a provided nifti image, return a flattened array (vector) of values contained within the brain, and a matrix of corresponding coordinates.
+    Parameters
+    ----------
+    img : str or nibabel.Nifti1Image
+        Path to image of interest or image object
+    mask_img : str or nibabel.Nifti1Image
+        Path to mask image or mask image object.
+    Returns
+    ----------
+    img_data_vector : np.ndarray
+        1d vector of shape (n_voxels,) for the voxels contained in the mask img
+    coords: np.ndarray
+        2d vector of shape (n_voxels, 3) for the corresponding 3d coordinates in world space (typically MNI152)
+    """
+    if mask_img == None:
+        img = nib.load(img) if type(img) == str else img
+        if type(img) != nib.Nifti1Image:
+            print(
+                f"Provided img was not Nifti1Image or path,str; instead got {type(img)}"
+            )
+        mask_img = img
+    else:
+        mask_img = nib.load(mask_img) if type(mask_img) == str else mask_img
+        masker = NiftiMasker(mask_img=mask_img).fit()
+        img = masker.inverse_transform(np.ravel(masker.fit_transform(img)))
+    coords = np.indices(img.shape).reshape(3, -1).T
+    coords = apply_affine(
+        img.affine, coords
+    )  # Convert voxel coordinates to world coordinates (usually MNI coordinate)
+    coords = coords[mask_img.get_fdata().flatten() != 0]  # Remove data outside brain
+    img_data_vector = img.get_fdata().flatten()[mask_img.get_fdata().flatten() != 0]
+    return img_data_vector, coords

@@ -4,10 +4,9 @@ import numpy as np
 import nibabel as nib
 from typing import Callable, Optional, Union
 from nilearn.maskers import NiftiMasker
-from prism.data_wrangling import load_data, load_nifti_if_not_already_nifti, is_nifti_like
-from prism.preprocessing import demean_glm_data
+from prism.preprocessing import load_data, load_nifti_if_not_already_nifti, is_nifti_like
 from prism.permutation_inference import permutation_analysis_volumetric_dense, permutation_analysis
-from prism.stats import t, t_z, aspin_welch_v, aspin_welch_v_z, F, F_z, G, G_z, r_squared, r_squared_z, pearson_r, fisher_z
+from prism.stats import t, t_z, aspin_welch_v, aspin_welch_v_z, F, F_z, G, G_z, r_squared, r_squared_z, pearson_r, fisher_z, demean_glm_data
 import json
 import sys
 

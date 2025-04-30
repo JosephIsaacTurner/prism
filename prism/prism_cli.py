@@ -6,7 +6,7 @@ import numpy as np
 import nibabel as nib
 from nilearn.maskers import NiftiMasker
 from .datasets import Dataset
-from .data_wrangling import load_data, is_nifti_like
+from .preprocessing import load_data, is_nifti_like
 from .permutation_inference import permutation_analysis, permutation_analysis_volumetric_dense
 
 NON_IMPLEMENTED_ARGS = [
@@ -387,7 +387,7 @@ def main():
         )
 
     # Print parsed arguments for testing
-    print("PYPALM - Permutation Analysis of Linear Models")
+    print("PRISM - PeRmutation Inference for Statistical Mapping")
     print("=============================================")
     print(f"Input file: {args.input}")
     print(f"Design matrix: {args.design}")

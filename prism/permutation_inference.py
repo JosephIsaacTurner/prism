@@ -6,12 +6,11 @@ from sklearn.utils import Bunch
 from statsmodels.stats.multitest import fdrcorrection
 from tqdm import tqdm
 from nilearn.maskers import NiftiMasker
-from .data_wrangling import load_nifti_if_not_already_nifti, ResultSaver
-from .preprocessing import demean_glm_data
+from .preprocessing import load_nifti_if_not_already_nifti, ResultSaver
 from .stats import (
     t, aspin_welch_v, F, G, pearson_r, r_squared,
     t_z, aspin_welch_v_z, F_z, G_z, fisher_z, r_squared_z,
-    residualize_data, partition_model,
+    residualize_data, partition_model, demean_glm_data
 )
 from .tfce import apply_tfce
 from .permutation_logic import get_vg_vector, yield_permuted_indices

@@ -1,4 +1,4 @@
-from .data_wrangling import is_nifti_like, load_data, load_nifti_if_not_already_nifti
+from .preprocessing import is_nifti_like, load_data, load_nifti_if_not_already_nifti
 from .datasets import Dataset
 from .permutation_inference import yield_permuted_stats, compute_p_values_accel_tail
 from .permutation_logic import get_vg_vector
@@ -246,27 +246,33 @@ class _SpatialCorrelationAnalysis:
         self.target_feature_shape = None
         # Determine target shape from first dataset's stat map
         if self.n_datasets > 0:
-            first_ds = self.datasets[0]
-            try:
-                if not all(
-                    [
-                        first_ds.data is not None,
-                        first_ds.design is not None,
-                        first_ds.contrast is not None,
-                        first_ds.stat_function is not None,
-                    ]
-                ):
-                    raise ValueError(
-                        "Dataset 1 missing components needed for shape validation."
+            for dataset in self.datasets:
+                try:
+                    if dataset.f_only:
+                        stat_function = dataset.f_stat_function
+                        contrast = dataset.contrast[dataset.f_contrast_indices.astype(bool), :] if dataset.f_contrast_indices is not None else dataset.contrast
+                    else:
+                        stat_function = dataset.stat_function
+                        contrast = dataset.contrast[0, :] if dataset.contrast.ndim > 1 else dataset.contrast
+                    if not all(
+                        [
+                            dataset.data is not None,
+                            dataset.design is not None,
+                            dataset.contrast is not None,
+                            dataset.stat_function is not None,
+                        ]
+                    ):
+                        raise ValueError(
+                            "Dataset 1 missing components needed for shape validation."
+                        )
+                    # Calculate temporary map just for shape
+                    stat_args = [dataset.data, dataset.design, contrast]
+                    temp_stat_map = stat_function(*stat_args)[0]
+                    self.target_feature_shape = temp_stat_map.ravel().shape[0]
+                except Exception as e:
+                    warnings.warn(
+                        f"Could not get shape from dataset 1 stat map: {e}. Trying refs."
                     )
-                # Calculate temporary map just for shape
-                stat_args = [first_ds.data, first_ds.design, first_ds.contrast]
-                temp_stat_map = first_ds.stat_function(*stat_args)[0]
-                self.target_feature_shape = temp_stat_map.ravel().shape[0]
-            except Exception as e:
-                warnings.warn(
-                    f"Could not get shape from dataset 1 stat map: {e}. Trying refs."
-                )
 
         # Fallback to first reference map if needed
         if self.target_feature_shape is None and self.final_reference_maps:

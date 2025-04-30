@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "prism"
 version = "0.1.0"
-description = "Permutation Inference for Statistical Mapping"
+description = "PeRmutation Inference for Statistical Mapping"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -37,7 +37,7 @@ Documentation = "https://github.com/JosephIsaacTurner/pstn"
 dev = ["pytest"]
 
 [project.scripts]
-prism = "prism.palm_cli:main"
+prism = "prism.prism_cli:main"
 
 [tool.setuptools.packages.find]
 where   = ["."]

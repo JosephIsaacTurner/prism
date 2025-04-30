@@ -1,19 +1,21 @@
 <p align="left">
-    <img src="assets/logo.svg" alt="prism Logo" width="700">
+    <img src="assets/logov2.svg" alt="prism Logo" width="400">
 </p>
 
 ## Overview
 
-prism (**Permutational Statistical Toolbox for Neuroimaging**) is a Python package designed for performing **fast, efficient, and scalable** statistical analysis on neuroimaging data using **permutation-based methods**. It provides tools for running **second-level General Linear Models (GLMs)** and comparing statistical map similarity in a pythonic manner without relying on external software.
+Prism is a Python library designed for performing **fast, efficient, and scalable** statistical analysis on neuroimaging data using **permutation-based methods**. It provides tools for running mass univariate analyses using **General Linear Models (GLMs)** and comparing statistical map similarity in a pythonic manner without relying on external software.
+
+It is designed to largely reproduce the methods Anderson Winkler's PALM (distributed with FSL), without requiring matlab. 
 
 To read more about why this project is needed, see the [manuscript](manuscript/manuscript.md).
 
 ## Features
 
 - **Permutation-based statistical testing** for robust inferences.
-- **Efficient second-level GLM analysis** tailored for neuroimaging datasets.
+- **Efficient GLM analysis** tailored for neuroimaging datasets.
 - **Statistical map similarity comparisons** for assessing voxelwise similarity of brain maps.
-- **Support for neuroimaging-specific data structures** (e.g., NIfTI, surface-based data).
+- **Support for neuroimaging-specific data structures** (e.g., NIfTI)
 - **Modular and extensible** framework to integrate with existing workflows.
 
 ## Installation
@@ -21,7 +23,7 @@ To read more about why this project is needed, see the [manuscript](manuscript/m
 You can install prism using pip and git:
 
 ```bash
-git clone https://github.com/josephisaacturner/pstn.git
+git clone https://github.com/josephisaacturner/prism.git
 cd prism
 pip install -e .
 ```
@@ -32,36 +34,12 @@ If you are using MacOS with silicon, you may need to install the `jax` library s
 pip install jax-metal
 ```
 
-## Project Structure
-
-The project is organized as follows:
-
-```
-prism/
-├── prism/              # Core Python package
-│   ├── stats.py       # Statistical functions
-│   ├── inference.py   # Inference functions (hypothesis testing classes, etc.)
-│   ├── loading.py     # Functions to load data
-│   ├── plotting.py    # Functions to plot data
-│   ├── data/          # Directory for data files (brain image templates, etc.)
-├── notebooks/         # Jupyter notebooks for experimentation & analysis
-├── tests/             # Unit and integration tests
-├── assets/            # Directory for static assets (e.g., logo)
-├── manuscript/        # Manuscript outlining background and methodology
-├── layout.md          # Explanation of the project layout
-├── README.md          # Introduction to the project for new users
-├── requirements.txt   # List of dependencies
-└── .gitignore         # Files and directories to be ignored by Git
-```
-
-For more details, see [`layout.md`](layout.md).
-
 ## Usage
 
 ### Example: Running a Second-Level GLM
 ```python
 from prism.inference import permutation_analysis
-from prism.stats import welchs_t_glm
+from prism.stats import t
 from nilearn.maskers import NiftiMasker
 
 # Random seed for reproducibility
@@ -105,4 +83,38 @@ We welcome contributions! If you want to contribute:
 
 ## License
 
-prism is open-source and available under the MIT License.
+Prism is open-source and available under the MIT License.
+
+## Project Structure
+
+The project is organized as follows:
+
+```
+prism/
+├── prism/                            # Core Python package
+│   ├── data/                         # Directory for data files (brain image templates, etc.)
+│   ├── datasets/
+│   │   ├── __init__.py               
+│   │   ├── dataset.py                # Handles Dataset class/object
+│   │   ├── utils.py                  # Utilities for fetching datasets/masks/atlases
+│   ├── stats/
+│   │   ├── __init__.py               
+│   │   ├── glm.py                    # General Linear Model functions
+│   │   ├── miscellaneous.py          # Miscellaneous functions
+│   ├── permutation_inference.py      # Inference functions (hypothesis testing classes, etc.)
+│   ├── permutation_logic.py          # Functions for implementing permutation logic
+│   ├── preprocessing.py              # Functions to load data and preprocess it
+│   ├── prism_cli.py                  # Command-line interface for prism
+│   ├── spatial_similarity.py         # Functions for assessing similarity of statistical maps
+│   ├── tfce.py                       # Functions for Threshold-Free Cluster Enhancement (TFCE)
+├── notebooks/                        # Jupyter notebooks for examples and tutorials
+├── tests/                            # Unit and integration tests
+├── assets/                           # Directory for static assets (e.g., logo)
+├── manuscript/                       # Manuscript outlining background and methodology
+├── README.md                         # Introduction to the project for new users
+├── requirements.txt                  # List of dependencies
+├── LICENSE                           # License information
+├── pyproject.toml                    # Project metadata and dependencies
+└── .gitignore                        # Files and directories to be ignored by Git
+
+```
