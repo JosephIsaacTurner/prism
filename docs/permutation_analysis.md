@@ -138,15 +138,13 @@ prism \
   -d design.csv \
   -t contrast.csv \
   -f f_contrast_indices.csv \
+  -eb exchangeability_matrix.csv \
+  -vg auto \
   -o /results/test \
-  -T \
-  --tfce \
-  --two-tailed \
-  --flip_signs \
-  --accel tail \
-  --correct_across_contrasts \
-  --f_only \
-  --zstat
+  -twotail \
+  -accel tail \
+  -corrcon \
+  -zstat
 ```
 
 > ⚠️ Many PALM flags are **not yet implemented** in PRISM. Unrecognized arguments will be ignored with a warning. See full list in source code (`NON_IMPLEMENTED_ARGS`).
