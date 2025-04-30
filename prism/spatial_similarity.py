@@ -316,7 +316,7 @@ class _SpatialCorrelationAnalysis:
                 contrast = dataset.contrast[dataset.f_contrast_indices.astype(bool), :] if dataset.f_contrast_indices is not None else dataset.contrast
             else:
                 stat_function = dataset.stat_function
-                contrast = dataset.contrast[0, :] # Use only the first contrast
+                contrast = dataset.contrast[0, :] if dataset.contrast.ndim > 1 else dataset.contrast
 
             stat_args = [dataset.data, dataset.design, contrast]
             # Handle variance groups if specified
@@ -482,7 +482,7 @@ class _SpatialCorrelationAnalysis:
                 contrast = dataset.contrast[dataset.f_contrast_indices.astype(bool), :] if dataset.f_contrast_indices is not None else dataset.contrast
             else:
                 stat_function = dataset.stat_function
-                contrast = dataset.contrast[0, :] # Use only the first contrast
+                contrast = dataset.contrast[0, :] if dataset.contrast.ndim > 1 else dataset.contrast
 
 
             dataset.permuted_stat_generator = yield_permuted_stats(

@@ -9,6 +9,7 @@ from prism.preprocessing import demean_glm_data
 from prism.permutation_inference import permutation_analysis_volumetric_dense, permutation_analysis
 from prism.stats import t, t_z, aspin_welch_v, aspin_welch_v_z, F, F_z, G, G_z, r_squared, r_squared_z, pearson_r, fisher_z
 import json
+import sys
 
 class Dataset:
     """
@@ -325,6 +326,7 @@ class Dataset:
             "save_permutations": self._save_permutations_input,
             "mask_img": self._mask_img_input,
             "tfce": self._tfce_input,
+            "cmd": " ".join(sys.argv),
         }
 
         if self.output_prefix is None:
@@ -344,6 +346,7 @@ class Dataset:
         """
         with open(config_path, "r") as f:
             params = json.load(f)
+        params.pop("cmd", None)  # Remove command line args if present
         return tuple(params.values())
     
     def select_stat_functions(self):
