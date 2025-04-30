@@ -7,7 +7,7 @@ import nibabel as nib
 from nilearn.maskers import NiftiMasker
 from .datasets import Dataset
 from .preprocessing import load_data, is_nifti_like
-from .permutation_inference import permutation_analysis, permutation_analysis_volumetric_dense
+from .permutation_inference import permutation_analysis, permutation_analysis_nifti
 
 NON_IMPLEMENTED_ARGS = [
     "-s",
@@ -67,7 +67,7 @@ NON_IMPLEMENTED_ARGS = [
 
 
 def setup_parser():
-    """Set up the argument parser for pypalm command."""
+    """Set up the argument parser for prism command."""
     parser = argparse.ArgumentParser(
         description="PALM (Permutation Analysis of Linear Models) for Python",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -238,7 +238,7 @@ def setup_parser():
             arg,
             action="store_true",
             default=False,
-            help=f"Argument {arg} is not yet implemented in pypalm",
+            help=f"Argument {arg} is not yet implemented in prism",
         )
 
     return parser
@@ -337,7 +337,7 @@ def validate_args(args):
     for arg in NON_IMPLEMENTED_ARGS:
         if getattr(args, arg[1:], False):
             print(
-                f"Warning: Argument {arg} is not yet implemented in pypalm. Ignoring it."
+                f"Warning: Argument {arg} is not yet implemented in prism. Ignoring it."
             )
             print(
                 "Please open an issue on GitHub if you need this feature, or use the original PALM."
@@ -376,7 +376,7 @@ def main():
 
     # Warn about unrecognized args
     if unknown:
-        print("\nWarning: The following arguments are not yet implemented in pypalm:")
+        print("\nWarning: The following arguments are not yet implemented in prism:")
         for arg in unknown:
             print(f"  {arg}")
         print(
@@ -431,103 +431,105 @@ def main():
     )
     dataset.save_config()
 
-    # Continue with the actual processing...
-    # Your PALM implementation code would go here
-    data = load_data(args.input)
-    design = load_data(args.design)
-    contrast = load_data(args.contrast)
-
-    if args.f_contrast_indices:
-        f_contrast_indices = load_data(args.f_contrast_indices)
-        print(f"F-contrast indices: {f_contrast_indices}")
-    else:
-        f_contrast_indices = None
-
-    input_is_nifti_like = is_nifti_like(data)
-
-    if input_is_nifti_like:
-        print("Input data is NIfTI-like. Using volumetric dense analysis.")
-        # Verify that we got a mask img
-        if args.mask is None:
-            print(
-                "Warning: Mask image not provided. We'll try to move forward, but behavior may be unpredictable."
-            )
-
-        results = permutation_analysis_volumetric_dense(
-            imgs=data,
-            mask_img=args.mask,
-            design=design,
-            contrast=contrast,
-            stat_function=stat_function,
-            n_permutations=args.n_permutations,
-            random_state=args.random_state,
-            two_tailed=args.two_tailed,
-            exchangeability_matrix=(
-                load_data(args.exchangeability_matrix)
-                if args.exchangeability_matrix
-                else None
-            ),
-            vg_auto=True if args.variance_groups == "auto" else False,
-            variance_groups=(
-                load_data(args.variance_groups)
-                if (args.variance_groups is not None and args.variance_groups != "auto")
-                else None
-            ),
-            within=args.within,
-            whole=args.whole,
-            flip_signs=args.flip_signs,
-            accel_tail=args.accel,
-            demean=args.demean,
-            f_stat_function=f_stat_function,
-            f_contrast_indices=f_contrast_indices,
-            f_only=args.f_only,
-            correct_across_contrasts=args.correct_across_contrasts,
-            tfce=args.tfce,
-            save_1minusp=args.save1_p,
-            save_neglog10p=args.logp,
-            zstat=args.zstat,
-            output_prefix=output_prefix,
-            save_permutations=args.save_permutations,
-        )
-
-    else:
-        results = permutation_analysis(
-            data=data,
-            design=design,
-            contrast=contrast,
-            stat_function=stat_function,
-            n_permutations=args.n_permutations,
-            random_state=args.random_state,
-            two_tailed=args.two_tailed,
-            exchangeability_matrix=(
-                load_data(args.exchangeability_matrix)
-                if args.exchangeability_matrix
-                else None
-            ),
-            vg_auto=True if args.variance_groups == "auto" else False,
-            variance_groups=(
-                load_data(args.variance_groups)
-                if (args.variance_groups is not None and args.variance_groups != "auto")
-                else None
-            ),
-            within=args.within,
-            whole=args.whole,
-            flip_signs=args.flip_signs,
-            accel_tail=args.accel,
-            demean=args.demean,
-            f_stat_function=f_stat_function,
-            f_contrast_indices=f_contrast_indices,
-            f_only=args.f_only,
-            correct_across_contrasts=args.correct_across_contrasts,
-            save_1minusp=args.save1_p,
-            save_neglog10p=args.logp,
-            zstat=args.zstat,
-            output_prefix=output_prefix,
-            save_permutations=args.save_permutations,
-        )
+    results = dataset.permutation_analysis()
 
     print("Analysis complete. Results saved to output files.")
 
+    # # --- Commenting out on Apr. 30th, 2025, as we intent all processing to be handled in the Dataset class.
+    # # Continue with the actual processing...
+    # # Your PALM implementation code would go here
+    # data = load_data(args.input)
+    # design = load_data(args.design)
+    # contrast = load_data(args.contrast)
+
+    # if args.f_contrast_indices:
+    #     f_contrast_indices = load_data(args.f_contrast_indices)
+    #     print(f"F-contrast indices: {f_contrast_indices}")
+    # else:
+    #     f_contrast_indices = None
+
+    # input_is_nifti_like = is_nifti_like(data)
+
+    # if input_is_nifti_like:
+    #     print("Input data is NIfTI-like. Using volumetric dense analysis.")
+    #     # Verify that we got a mask img
+    #     if args.mask is None:
+    #         print(
+    #             "Warning: Mask image not provided. We'll try to move forward, but behavior may be unpredictable."
+    #         )
+
+    #     results = permutation_analysis_nifti(
+    #         imgs=data,
+    #         mask_img=args.mask,
+    #         design=design,
+    #         contrast=contrast,
+    #         stat_function=stat_function,
+    #         n_permutations=args.n_permutations,
+    #         random_state=args.random_state,
+    #         two_tailed=args.two_tailed,
+    #         exchangeability_matrix=(
+    #             load_data(args.exchangeability_matrix)
+    #             if args.exchangeability_matrix
+    #             else None
+    #         ),
+    #         vg_auto=True if args.variance_groups == "auto" else False,
+    #         variance_groups=(
+    #             load_data(args.variance_groups)
+    #             if (args.variance_groups is not None and args.variance_groups != "auto")
+    #             else None
+    #         ),
+    #         within=args.within,
+    #         whole=args.whole,
+    #         flip_signs=args.flip_signs,
+    #         accel_tail=args.accel,
+    #         demean=args.demean,
+    #         f_stat_function=f_stat_function,
+    #         f_contrast_indices=f_contrast_indices,
+    #         f_only=args.f_only,
+    #         correct_across_contrasts=args.correct_across_contrasts,
+    #         tfce=args.tfce,
+    #         save_1minusp=args.save1_p,
+    #         save_neglog10p=args.logp,
+    #         zstat=args.zstat,
+    #         output_prefix=output_prefix,
+    #         save_permutations=args.save_permutations,
+    #     )
+
+    # else:
+    #     results = permutation_analysis(
+    #         data=data,
+    #         design=design,
+    #         contrast=contrast,
+    #         stat_function=stat_function,
+    #         n_permutations=args.n_permutations,
+    #         random_state=args.random_state,
+    #         two_tailed=args.two_tailed,
+    #         exchangeability_matrix=(
+    #             load_data(args.exchangeability_matrix)
+    #             if args.exchangeability_matrix
+    #             else None
+    #         ),
+    #         vg_auto=True if args.variance_groups == "auto" else False,
+    #         variance_groups=(
+    #             load_data(args.variance_groups)
+    #             if (args.variance_groups is not None and args.variance_groups != "auto")
+    #             else None
+    #         ),
+    #         within=args.within,
+    #         whole=args.whole,
+    #         flip_signs=args.flip_signs,
+    #         accel_tail=args.accel,
+    #         demean=args.demean,
+    #         f_stat_function=f_stat_function,
+    #         f_contrast_indices=f_contrast_indices,
+    #         f_only=args.f_only,
+    #         correct_across_contrasts=args.correct_across_contrasts,
+    #         save_1minusp=args.save1_p,
+    #         save_neglog10p=args.logp,
+    #         zstat=args.zstat,
+    #         output_prefix=output_prefix,
+    #         save_permutations=args.save_permutations,
+    #     )
 
 if __name__ == "__main__":
     main()

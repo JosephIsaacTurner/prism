@@ -533,7 +533,7 @@ def permutation_analysis(
     return results
 
 
-def permutation_analysis_volumetric_dense(
+def permutation_analysis_nifti(
     imgs,
     design,
     contrast,

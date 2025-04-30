@@ -23,6 +23,7 @@ def spatial_similarity_permutation_analysis(
     ] = None,
     two_tailed: bool = True,
     compare_func: Optional[Callable] = None,
+    accel_tail=False
 ) -> Optional[Bunch]:
     """
     Computes spatial correlations between dataset statistic maps and reference maps,
@@ -53,7 +54,7 @@ def spatial_similarity_permutation_analysis(
         - 'corr_matrix_perm_ds_ref': (N_perm x N_datasets x N_references) array, or None.
     """
     analyzer = _SpatialCorrelationAnalysis(
-        datasets, reference_maps, two_tailed, compare_func
+        datasets, reference_maps, two_tailed, compare_func, accel_tail
     )
     results = analyzer.run_analysis()
     return results
@@ -80,6 +81,7 @@ class _SpatialCorrelationAnalysis:
         ],
         two_tailed: bool,
         comparison_func: Optional[Callable[[np.ndarray, np.ndarray], float]] = None,
+        accel_tail: bool = False,
     ):
         """
         Initializes the analysis manager.
@@ -94,6 +96,7 @@ class _SpatialCorrelationAnalysis:
         self.reference_maps_input = reference_maps_input
         self.two_tailed = two_tailed
         self.comparison_func = comparison_func
+        self.accel_tail = accel_tail
 
         # Internal state
         self.datasets: List["Dataset"] = []
@@ -559,7 +562,32 @@ class _SpatialCorrelationAnalysis:
         if n_perm_actual == 0:
             return np.full_like(true_values, np.nan)  # No perms run
 
-        try:
+        # try:
+        if self.accel_tail:
+            p_values = np.full_like(true_values, np.nan)
+            if true_values.shape[0] == true_values.shape[0]:
+                # We are looking at a square matrix of DS x DS correlations.
+                # Let's get the upper triangle indices to avoid computing twice.
+                i, j = np.triu_indices_from(true_values, k=1)
+                # Iterate over upper triangle
+                for x, y in zip(i, j):
+                    obs = true_values[x, y]
+                    null_dist = permuted_values[:, x, y]
+                    p_values_i = compute_p_values_accel_tail(
+                        np.atleast_1d(obs), np.ravel(null_dist), self.two_tailed
+                    )
+                    p_values[x, y] = p_values_i
+                    p_values[y, x] = p_values_i
+            else:
+                # We are looking at a rectangular matrix of DS x Ref correlations. Let's iterate over all.
+                for i in range(true_values.shape[0]):
+                    for j in range(true_values.shape[1]):
+                        obs = true_values[i, j]
+                        null_dist = permuted_values[:, i, j]
+                        p_values[i, j] = compute_p_values_accel_tail(
+                            obs, null_dist, self.two_tailed
+                        )                
+        else:
             if self.two_tailed:
                 exceedances = np.sum(
                     np.abs(permuted_values) >= np.abs(true_values)[np.newaxis, :, :],
@@ -570,10 +598,10 @@ class _SpatialCorrelationAnalysis:
                     permuted_values >= true_values[np.newaxis, :, :], axis=0
                 )
             p_values = (exceedances + 1.0) / (n_perm_actual + 1.0)
-            return p_values
-        except Exception as e:
-            warnings.warn(f"Error during p-value calculation: {e}. Returning NaNs.")
-            return np.full_like(true_values, np.nan)
+        return p_values
+        # except Exception as e:
+        #     warnings.warn(f"Error during p-value calculation: {e}. Returning NaNs.")
+        #     return np.full_like(true_values, np.nan)
 
     def run_analysis(self) -> Bunch[str, Optional[np.ndarray]]:
         """

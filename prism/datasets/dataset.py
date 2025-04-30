@@ -5,7 +5,7 @@ import nibabel as nib
 from typing import Callable, Optional, Union
 from nilearn.maskers import NiftiMasker
 from prism.preprocessing import load_data, load_nifti_if_not_already_nifti, is_nifti_like
-from prism.permutation_inference import permutation_analysis_volumetric_dense, permutation_analysis
+from prism.permutation_inference import permutation_analysis, permutation_analysis_nifti
 from prism.stats import t, t_z, aspin_welch_v, aspin_welch_v_z, F, F_z, G, G_z, r_squared, r_squared_z, pearson_r, fisher_z, demean_glm_data
 import json
 import sys
@@ -285,7 +285,7 @@ class Dataset:
         params = self.params.copy()
         if self.is_nifti:
             params['imgs'] = params.pop('data') # Rename data to imgs for NIfTI
-            results = permutation_analysis_volumetric_dense(
+            results = permutation_analysis_nifti(
                 **params
             )
         else:
@@ -329,7 +329,7 @@ class Dataset:
         }
 
         if self.output_prefix is None:
-            output_prefix = f"{os.path.getcwd()}/prism"
+            output_prefix = f"{os.getcwd()}/prism"
         else:
             output_prefix = self.output_prefix
 
@@ -338,6 +338,7 @@ class Dataset:
         with open(config_path, "w") as f:
             json.dump(input_params, f, indent=4)
         print(f"Configuration saved to {config_path}")
+        return config_path
 
     def parse_config(self, config_path: str):
         """

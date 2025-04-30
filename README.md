@@ -2,25 +2,38 @@
     <img src="assets/logov2.svg" alt="prism Logo" width="400">
 </p>
 
-## Overview
+# Prism
 
-Prism is a Python library designed for performing **fast, efficient, and scalable** statistical analysis on neuroimaging data using **permutation-based methods**. It provides tools for running mass univariate analyses using **General Linear Models (GLMs)** and comparing statistical map similarity in a pythonic manner without relying on external software.
+**Fast, modular, and extensible permutation-based statistical inference for neuroimaging.**
 
-It is designed to largely reproduce the methods Anderson Winkler's PALM (distributed with FSL), without requiring matlab. 
+Prism is a Python library for running fast, scalable, and fully nonparametric statistical analyses on brain imaging data. It replicates much of the core functionality of Anderson Winkler's [PALM](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/PALM), but without MATLAB dependencies.
 
-To read more about why this project is needed, see the [manuscript](manuscript/manuscript.md).
+---
 
-## Features
+## 📚 Documentation
 
-- **Permutation-based statistical testing** for robust inferences.
-- **Efficient GLM analysis** tailored for neuroimaging datasets.
-- **Statistical map similarity comparisons** for assessing voxelwise similarity of brain maps.
-- **Support for neuroimaging-specific data structures** (e.g., NIfTI)
-- **Modular and extensible** framework to integrate with existing workflows.
+- [Dataset API](docs/dataset.md)
+- [Permutation Analysis](docs/permutation_analysis.md)
+- [Spatial Similarity](docs/spatial_similarity.md)
+- [Statistical Functions](docs/statistical_functions.md)
+- [Usage Examples](docs/usage_examples.md)
 
-## Installation
+For background and motivation, see the [project manuscript](manuscript/manuscript.md).
 
-You can install prism using pip and git:
+---
+
+## 🚀 Features
+
+- **Mass univariate GLM analysis** with flexible contrast modeling
+- **Permutation-based testing** including sign flips and blockwise shuffling
+- **Support for TFCE**, FDR, FWE (Westfall–Young), and GPD-based p-value tail estimation
+- **Voxelwise map comparison tools** for assessing spatial similarity
+- **CLI interface** modeled after PALM
+- Works directly with **NIfTI files** or **NumPy arrays**
+
+---
+
+## 🛠️ Installation
 
 ```bash
 git clone https://github.com/josephisaacturner/prism.git
@@ -28,93 +41,77 @@ cd prism
 pip install -e .
 ```
 
-If you are using MacOS with silicon, you may need to install the `jax` library separately:
+If you're on MacOS with Apple silicon, you may need to manually install a jax dependency:
 
 ```bash
 pip install jax-metal
 ```
 
-## Usage
+---
 
-### Example: Running a Second-Level GLM
+## Minimal Example
+
 ```python
-from prism.inference import permutation_analysis
-from prism.stats import t
-from nilearn.maskers import NiftiMasker
+import numpy as np
+from prism.datasets import Dataset
 
-# Random seed for reproducibility
-random_seed = 42
+Y = np.random.randn(100, 50)        # Brain data (samples x voxels)
+X = np.random.randn(100, 2)         # Design matrix
+C = np.array([1, -1])               # Contrast
 
-# Load neuroimaging data
-masker = NiftiMasker(mask_img="mask.nii.gz").fit()
-data = masker.transform("data.nii.gz") # 4d data, or pass in a list of filepaths to NIfTI files
+dataset = Dataset(
+    data=Y,
+    design=X,
+    contrast=C,
+    output_prefix="prism_example",
+    n_permutations=1000
+)
 
-design = np.load("design_matrix.npy") # Load design matrix (shape n_subjects x n_features)
-contrast = np.array([1, 0, 0]) # Assuming on VOI, and two nuisance regressors/intercepts
-
-# Run the ground-truth analysis
-t_values = welchs_t_glm(data, design_matrix, contrast_matrix)
-
-# Run permutation analysis
-n_permutations = 1000
-unc_p, fdr_p, fwe_p = permutation_analysis(data, design, contrast, welchs_t_glm, random_seed, n_permutations, two_tailed=True, accel_tail=True)
-
-# Save results as NIfTI files
-masker.inverse_transform(t_values).to_filename("t_values.nii.gz")
-masker.inverse_transform(unc_p).to_filename("uncorrected_p_values.nii.gz")
-masker.inverse_transform(fdr_p).to_filename("fdr_corrected_p_values.nii.gz")
-masker.inverse_transform(fwe_p).to_filename("fwe_corrected_p_values.nii.gz")
+results = dataset.permutation_analysis()
 ```
 
-### Example: Comparing Statistical Maps
-```python
-print("I'll add an example here soon!")
-```
+More full examples are available in [Usage Examples](docs/usage_examples.md).
+
+---
 
 ## Contributing
 
-We welcome contributions! If you want to contribute:
+We welcome contributions! To get started:
 
-1. Fork the repository.
-2. Create a new branch: `git checkout -b feature-branch-name`
-3. Make your changes and commit: `git commit -m "Add new feature"`
-4. Push to your branch: `git push origin feature-branch-name`
-5. Open a pull request!
+1. Fork this repository
+2. Create a new branch: `git checkout -b feature-name`
+3. Make your changes
+4. Commit: `git commit -m "Description"`
+5. Push and open a pull request!
 
-## License
+---
 
-Prism is open-source and available under the MIT License.
-
-## Project Structure
-
-The project is organized as follows:
+## 📂 Project Structure
 
 ```
 prism/
 ├── prism/                            # Core Python package
-│   ├── data/                         # Directory for data files (brain image templates, etc.)
-│   ├── datasets/
-│   │   ├── __init__.py               
-│   │   ├── dataset.py                # Handles Dataset class/object
-│   │   ├── utils.py                  # Utilities for fetching datasets/masks/atlases
-│   ├── stats/
-│   │   ├── __init__.py               
-│   │   ├── glm.py                    # General Linear Model functions
-│   │   ├── miscellaneous.py          # Miscellaneous functions
-│   ├── permutation_inference.py      # Inference functions (hypothesis testing classes, etc.)
-│   ├── permutation_logic.py          # Functions for implementing permutation logic
-│   ├── preprocessing.py              # Functions to load data and preprocess it
-│   ├── prism_cli.py                  # Command-line interface for prism
-│   ├── spatial_similarity.py         # Functions for assessing similarity of statistical maps
-│   ├── tfce.py                       # Functions for Threshold-Free Cluster Enhancement (TFCE)
-├── notebooks/                        # Jupyter notebooks for examples and tutorials
-├── tests/                            # Unit and integration tests
-├── assets/                           # Directory for static assets (e.g., logo)
-├── manuscript/                       # Manuscript outlining background and methodology
-├── README.md                         # Introduction to the project for new users
-├── requirements.txt                  # List of dependencies
-├── LICENSE                           # License information
-├── pyproject.toml                    # Project metadata and dependencies
-└── .gitignore                        # Files and directories to be ignored by Git
-
+│   ├── data/                         # Brain templates or masks
+│   ├── datasets/                     # Dataset class logic
+│   ├── stats/                        # GLM and stat functions
+│   ├── permutation_inference.py      # Main permutation logic
+│   ├── preprocessing.py              # Data loading, masking, preprocessing
+│   ├── tfce.py                       # TFCE implementation
+│   ├── spatial_similarity.py         # Spatial map correlation engine
+│   ├── prism_cli.py                  # Command-line interface (pypalm)
+├── docs/                             # Markdown documentation
+├── notebooks/                        # Example Jupyter notebooks
+├── tests/                            # Unit tests
+├── assets/                           # Static images and logos
+├── manuscript/                       # Project manuscript
+├── README.md                         # You are here
+├── requirements.txt                  # Dependencies
+├── pyproject.toml                    # Build system metadata
+└── LICENSE
 ```
+
+---
+
+## License
+
+Prism is released under the [MIT License](LICENSE).
