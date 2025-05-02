@@ -410,7 +410,7 @@ def main():
         two_tailed=args.two_tailed,
         exchangeability_matrix=args.exchangeability_matrix,
         vg_auto=True if args.variance_groups == "auto" else False,
-        variance_groups=args.variance_groups,
+        variance_groups=args.variance_groups if args.variance_groups != "auto" else None,
         within=args.within,
         whole=args.whole,
         flip_signs=args.flip_signs,
