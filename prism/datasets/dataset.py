@@ -143,9 +143,6 @@ class Dataset:
         )  # Assumes is_nifti_like utility exists
 
         if self.is_nifti:
-            nifti_data = load_nifti_if_not_already_nifti(
-                loaded_data
-            )  # Assumes utility exists
             if self._mask_img_input:
                 self.mask_img = load_nifti_if_not_already_nifti(self._mask_img_input)
                 self.masker = NiftiMasker(mask_img=self.mask_img)
@@ -155,7 +152,7 @@ class Dataset:
                 )
                 self.masker = NiftiMasker()  # Default strategy
             # Fit masker (if needed) and transform data
-            self.data = self.masker.fit_transform(nifti_data)
+            self.data = self.masker.fit_transform(loaded_data)
             if self.mask_img is None:
                 self.mask_img = self.masker.mask_img_  # Store auto-generated mask
             # Ensure data is 2D (samples x features)
