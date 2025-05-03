@@ -6,32 +6,61 @@ import nibabel as nib
 from sklearn.utils import Bunch
 import pandas as pd
 
+
 def load_data(input):
     """
     Load the input data from a file.
     Parameters:
-    - input: str, path to the input file
+    - input: str or already-loaded data
 
     Returns:
     - data: numpy array, loaded data
     """
     if not isinstance(input, str):
-        # print("Warning: Input is not a string. Probably already loaded data.")
         return input
+
+    # CSV
     if input.endswith(".csv"):
         data = pd.read_csv(input, header=None).values
         if data.shape[1] == 1:
-            data = data[:, 0]  # Convert to 1D array if only one column
+            data = data[:, 0]
+
+    # NumPy binary
     elif input.endswith(".npy"):
         data = np.load(input)
+
+    # FSL-style .con or .mat (NumWaves/NumPoints headers + /Matrix)
+    elif input.endswith((".con", ".mat")):
+        with open(input, 'r') as f:
+            lines = f.readlines()
+        # Find the line after "/Matrix"
+        for idx, line in enumerate(lines):
+            if line.strip().startswith("/Matrix"):
+                matrix_start = idx + 1
+                break
+        # Load everything after that as a numeric array
+        data = np.loadtxt(lines[matrix_start:], delimiter=None)
+
+    # TSV
+    elif input.endswith(".tsv"):
+        data = pd.read_csv(input, sep="\t", header=None).values
+        if data.shape[1] == 1:
+            data = data[:, 0]
+
+    # Plain text (tab‐delimited)
     elif input.endswith(".txt"):
-        data = pd.read_csv(input, sep="\t").values
+        data = pd.read_csv(input, sep="\t", header=None).values
+
+    # NIfTI
     elif input.endswith(".nii") or input.endswith(".nii.gz"):
         data = nib.load(input)
+
     else:
         raise ValueError(
-            "Unsupported file format. Please provide a .csv, .npy, .txt, .nii, or .nii.gz file."
+            "Unsupported file format. Please provide a .csv, .npy, .txt, "
+            ".nii(.gz), .tsv, .con or .mat file."
         )
+
     return data
 
 

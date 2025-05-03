@@ -565,7 +565,7 @@ class _SpatialCorrelationAnalysis:
         # try:
         if self.accel_tail:
             p_values = np.full_like(true_values, np.nan)
-            if true_values.shape[0] == true_values.shape[0]:
+            if true_values.shape[0] == true_values.shape[1]:
                 # We are looking at a square matrix of DS x DS correlations.
                 # Let's get the upper triangle indices to avoid computing twice.
                 i, j = np.triu_indices_from(true_values, k=1)
@@ -585,7 +585,7 @@ class _SpatialCorrelationAnalysis:
                         obs = true_values[i, j]
                         null_dist = permuted_values[:, i, j]
                         p_values[i, j] = compute_p_values_accel_tail(
-                            obs, null_dist, self.two_tailed
+                            np.atleast_1d(obs), np.ravel(null_dist), self.two_tailed
                         )                
         else:
             if self.two_tailed:
