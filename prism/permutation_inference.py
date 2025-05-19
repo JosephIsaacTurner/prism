@@ -1068,7 +1068,7 @@ def yield_permuted_stats(
             base_residuals,
             n_permutations,
             random_state,
-            variance_groups=variance_groups,
+            group_ids=variance_groups,
             whole=whole,
         )
 
