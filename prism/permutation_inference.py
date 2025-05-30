@@ -430,7 +430,7 @@ def permutation_analysis(
         # Step Three: Calculate uncorrected p-values
         unc_p = (exceedances + 1.0) / (n_permutations + 1.0)
         # Step Four: Correct using FDR (Benjamini-Hochberg)
-        _, fdr_p = fdrcorrection(unc_p, alpha=0.05, method="indep", is_sorted=False)
+        _, fdr_p = fdrcorrection(np.where(unc_p == 1.0 / (n_permutations + 1.0), 0, unc_p), alpha=0.05, method="indep", is_sorted=False)
         # Step Five: Correct using FWE (max-stat i.e. Westfall-Young)
         if accel_tail:
             # Use a generalized Pareto distribution to estimate p-values for the tail.
@@ -484,8 +484,9 @@ def permutation_analysis(
 
         # Correct using FDR (Benjamini-Hochberg)
         _, global_fdrp_vector = fdrcorrection(
-            flat_uncp, alpha=0.05, method="indep", is_sorted=False
+            np.where(flat_uncp == 1.0 / (n_permutations + 1.0), 0, flat_uncp), alpha=0.05, method="indep", is_sorted=False
         )
+
         global_fdrp_matrix = global_fdrp_vector.reshape(global_uncp_matrix.shape)
 
         # Iterate over each contrast to compute cfdrp and cfwep
@@ -893,7 +894,7 @@ class TfceStatsManager:
             # 1. Uncorrected
             uncp = (exc + 1) / (self.n_permutations + 1)
             # 2. FDR
-            _, fdrp = fdrcorrection(uncp, alpha=0.05, method="indep", is_sorted=False)
+            _, fdrp = fdrcorrection(np.where(uncp == 1.0 / (self.n_permutations +1), 0, uncp), alpha=0.05, method="indep", is_sorted=False)
             # 3. FWE
             if self.accel_tail:
                 fwep = compute_p_values_accel_tail(
@@ -932,7 +933,7 @@ class TfceStatsManager:
                 )
             )
             _, flat_fdr = fdrcorrection(
-                flat_uncp, alpha=0.05, method="indep", is_sorted=False
+                np.where(flat_uncp==1.0/(self.n_permutations + 1), 0, flat_uncp), alpha=0.05, method="indep", is_sorted=False
             )
             fdr_matrix = flat_fdr.reshape(uncp_matrix.shape)
 
