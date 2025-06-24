@@ -216,8 +216,10 @@ def yield_permuted_indices(
         raise ValueError(
             f"design must be 2D (samples x features), got shape {design.shape}"
         )
+    
+    design_ = design.copy()  # Work on a copy to avoid modifying the original
 
-    n_samples = design.shape[0]
+    n_samples = design_.shape[0]
     if n_samples == 0:
         # Handle empty design matrix - yield nothing or raise error?
         # Let's yield nothing as n_permutations would be irrelevant.
@@ -375,11 +377,11 @@ def yield_permuted_indices(
             # To me, it makes more sense and is easier to implement than the Freedman-Lane method recommended by Anderson Winkler.
             contrast = np.atleast_2d(contrast)
             contrast_indices = np.ravel(contrast[0, :]).astype(bool)
-            design_subset = design[:, contrast_indices]
+            design_subset = design_[:, contrast_indices]
             design_subset = design_subset[permuted_row_indices, :]
-            design[:, contrast_indices] = design_subset
+            design_[:, contrast_indices] = design_subset
         else:
-            design = design[permuted_row_indices, :]
+            design_ = design_[permuted_row_indices, :]
         yield permuted_row_indices
 
 

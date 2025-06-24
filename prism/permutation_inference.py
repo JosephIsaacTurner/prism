@@ -1068,7 +1068,7 @@ def yield_permuted_stats(
         sign_flip_gen = yield_sign_flipped_data(
             base_residuals,
             n_permutations,
-            random_state,
+            random_state + 1,
             group_ids=variance_groups,
             whole=whole,
         )
