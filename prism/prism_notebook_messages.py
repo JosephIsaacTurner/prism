@@ -25,6 +25,8 @@ def pretty_print_df_info(df):
                 print(f"  {RED}{col}{RESET}: {count:,} NaN values")
         else:
             print(f"{GREEN}✅ No missing (NaN) values found in any columns.{RESET}")
+        print(f"\n{YELLOW}📊 Preview of first few rows:{RESET}")
+        display(df.head(5))
 
     except Exception as e:
         print(f"{RED}❌ Error processing DataFrame: {e}{RESET}")
