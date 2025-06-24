@@ -101,7 +101,7 @@ def is_nifti_like(data):
         return True
 
     # list/tuple of images or filenames
-    if isinstance(data, (list, tuple)):
+    if isinstance(data, (list, tuple, np.ndarray)):
         return all(is_nifti_like(item) for item in data)
 
     return False
