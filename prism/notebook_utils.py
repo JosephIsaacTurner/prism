@@ -484,3 +484,205 @@ conda activate {conda_env}
         ssh_cmd = f"echo sbatch {script_fp} | sshpass -p {getpass('Enter your cluster password: ')} ssh {username}@{hostname}"
         subprocess.run(ssh_cmd, shell=True)
         print(f"Job submitted to {hostname} as {username}.")
+
+
+def pretty_print_all_datasets(all_datasets):
+    """
+    1. Prints number of datasets
+    2. Prints number of subjects per dataset
+    3. Prints number of permutations per dataset
+    4. Chooses the smallest common permutation count and warns how to increase it
+    5. Checks for any overlapping images across datasets and, if found, lists them
+       (only when there are 2+ datasets)
+    """
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    CYAN = "\033[96m"
+    RESET = "\033[0m"
+
+    try:
+        # 1. Number of datasets
+        n_dsets = len(all_datasets)
+        print(f"{CYAN}Number of datasets:{RESET} {YELLOW}{n_dsets}{RESET}\n")
+
+        subjects_counts = []
+        images_sets     = []
+
+        for idx, ds in enumerate(all_datasets, start=1):
+            # 2. Number of subjects
+            design_df = pd.read_csv(ds._design_input, header=None) if isinstance(ds._design_input, str) else ds._design_input
+            n_subj    = len(design_df)
+            subjects_counts.append(n_subj)
+            print(f"{CYAN}Dataset {idx}:{RESET}")
+            print(f"  {GREEN}Subjects:{RESET} {YELLOW}{n_subj}{RESET}")
+
+            # 3a. Load image list
+            data_df = pd.read_csv(ds._data_input, header=None) if isinstance(ds._data_input, str) else ds._data_input
+            imgs    = set(data_df.iloc[:, 0]) if isinstance(data_df, pd.DataFrame) else set(data_df)
+            images_sets.append(imgs)
+            print()
+
+        # 3b. Overlapping images (only if 2+ datasets)
+        if n_dsets > 1:
+            common_imgs = set.intersection(*images_sets)
+            if common_imgs:
+                print(f"{RED}Warning!{RESET} Found {len(common_imgs)} image(s) present in multiple datasets:")
+                for img in sorted(common_imgs):
+                    print(f"  {RED}{img}{RESET}")
+
+    except Exception as e:
+        print(f"{RED}Error while pretty printing datasets:{RESET} {e}")
+        return
+    
+
+def save_and_summarize_similarity(
+    results,
+    dataset_names,
+    reference_names=None,
+    output_dir="similarity_results",
+):
+    """
+    Print a concise summary and save correlation/p-value matrices and permutation arrays.
+
+    Parameters
+    ----------
+    results : object
+        Attributes it looks for:
+          - corr_matrix_ds_ds       (ndarray, n_dsets×n_dsets)
+          - p_matrix_ds_ds          (ndarray, n_dsets×n_dsets)
+          - corr_matrix_perm_ds_ds  (ndarray, n_perm×n_dsets×n_dsets)
+        Optionally:
+          - corr_matrix_ds_ref      (ndarray, n_dsets×n_refs)
+          - p_matrix_ds_ref         (ndarray, n_dsets×n_refs)
+          - corr_matrix_perm_ds_ref (ndarray, n_perm×n_dsets×n_refs)
+    dataset_names : list of str
+        Labels for each dataset.
+    reference_names : list of str, optional
+        Labels for each reference map.
+    output_dir : str
+        Directory where outputs will be saved.
+    """
+
+    # Prepare output directory
+    os.makedirs(output_dir, exist_ok=True)
+
+    n_dsets = len(dataset_names)
+    n_refs = len(reference_names or [])
+
+    print(f"➤ Datasets: {n_dsets}   References: {n_refs}\n")
+
+    # Dataset–Dataset
+    if getattr(results, "corr_matrix_ds_ds", None) is not None:
+        df = pd.DataFrame(
+            results.corr_matrix_ds_ds,
+            index=dataset_names,
+            columns=dataset_names,
+        )
+        path = os.path.join(output_dir, "corr_matrix_ds_ds.csv")
+        df.to_csv(path)
+        print(f"  • Saved dataset–dataset correlations → {path}")
+
+    if getattr(results, "p_matrix_ds_ds", None) is not None:
+        df = pd.DataFrame(
+            results.p_matrix_ds_ds,
+            index=dataset_names,
+            columns=dataset_names,
+        )
+        path = os.path.join(output_dir, "p_matrix_ds_ds.csv")
+        df.to_csv(path)
+        print(f"  • Saved dataset–dataset p-values       → {path}")
+
+    # Dataset–Reference
+    if getattr(results, "corr_matrix_ds_ref", None) is not None and n_refs > 0:
+        df = pd.DataFrame(
+            results.corr_matrix_ds_ref,
+            index=dataset_names,
+            columns=reference_names,
+        )
+        path = os.path.join(output_dir, "corr_matrix_ds_ref.csv")
+        df.to_csv(path)
+        print(f"  • Saved dataset–reference correlations → {path}")
+
+    if getattr(results, "p_matrix_ds_ref", None) is not None and n_refs > 0:
+        df = pd.DataFrame(
+            results.p_matrix_ds_ref,
+            index=dataset_names,
+            columns=reference_names,
+        )
+        path = os.path.join(output_dir, "p_matrix_ds_ref.csv")
+        df.to_csv(path)
+        print(f"  • Saved dataset–reference p-values       → {path}")
+
+    # Permutation arrays
+    if getattr(results, "corr_matrix_perm_ds_ds", None) is not None:
+        arr = results.corr_matrix_perm_ds_ds
+        path = os.path.join(output_dir, "corr_matrix_perm_ds_ds.npy")
+        np.save(path, arr)
+        print(f"  • Saved ds–ds permutation array       → {path}")
+
+    if getattr(results, "corr_matrix_perm_ds_ref", None) is not None and n_refs > 0:
+        arr = results.corr_matrix_perm_ds_ref
+        path = os.path.join(output_dir, "corr_matrix_perm_ds_ref.npy")
+        np.save(path, arr)
+        print(f"  • Saved ds–ref permutation array      → {path}")
+
+    print(f"\n✅ All files saved under: {os.path.abspath(output_dir)}")
+
+
+def submit_slurm_job_spatial_similarity(
+    hostname,
+    username,
+    email,
+    conda_env,
+    output_dir,
+    dataset_configs,
+    reference_maps=None,
+    mask_img=None,
+    n_permutations=1000,
+    two_tailed=True,
+    accel_tail=False,
+    n_cores=12,
+    memory="16000",
+    time="12:00:00",
+    dry_run=False
+):
+    cmd = "prism_spatial_similarity"
+    cmd += f" --output-dir {output_dir}"
+    cmd += f" --dataset-configs {' '.join(dataset_configs)}"
+    cmd += f" --reference-maps {' '.join(reference_maps)}"
+    cmd += f" --mask_img {mask_img}" if mask_img else ""
+    cmd += f" --n-permutations {n_permutations}"
+    cmd += " --two-tailed" if two_tailed else ""
+    cmd += " --accel-tail" if accel_tail else ""
+
+    env_setup = ". ~/.bashrc;"
+
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Create SLURM script
+    job_script = f"""#!/bin/bash
+#SBATCH -p nimlab,normal,bigmem,long
+#SBATCH -c {n_cores}
+#SBATCH --mem {memory}
+#SBATCH -o {output_dir}/slurm.%N.%j.out
+#SBATCH -e {output_dir}/slurm.%N.%j.err
+#SBATCH -t {time}
+#SBATCH --mail-user={email}
+#SBATCH --mail-type=END
+{env_setup}
+conda activate {conda_env};
+{cmd}
+"""
+    script_fp = os.path.join(output_dir, "spatial_similarity_job.sh")
+    with open(script_fp, "w") as f:
+        f.write(job_script)
+    print(f"Job script saved to {script_fp}")
+    print(f"Submit with: \nsbatch {script_fp}")
+    if not dry_run:
+        # Submit via SSH
+        ssh_cmd = f"echo sbatch {script_fp} | sshpass -p {getpass('Enter your cluster password: ')} ssh {username}@{hostname}"
+        subprocess.run(ssh_cmd, shell=True)
+        print(f"Job submitted to {hostname} as {username}.")
+    return script_fp

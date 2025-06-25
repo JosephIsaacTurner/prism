@@ -297,7 +297,7 @@ class Dataset:
             "data": self._data_input,
             "design": self._design_input,
             "contrast": self._contrast_input,
-            "output_prefix": self._output_prefix_input,
+            "output_prefix": self.output_prefix,
             "f_contrast_indices": self._f_contrast_indices_input,
             "two_tailed": self._two_tailed_input,
             "exchangeability_matrix": self._exchangeability_matrix_input,
@@ -329,6 +329,18 @@ class Dataset:
             output_prefix = f"{os.getcwd()}/prism"
         else:
             output_prefix = self.output_prefix
+
+        os.makedirs(os.path.dirname(output_prefix), exist_ok=True)
+
+        # We need to iterate over input_params, and if they are ndarrays, we need to save them as 
+        # headerless CSV files with the prefix output_prefix
+        for key, value in input_params.items():
+            if isinstance(value, np.ndarray):
+                # Save as CSV without header
+                csv_path = f"{output_prefix}_{key}.csv"
+                np.savetxt(csv_path, value, delimiter=",", header="", comments="")
+                print(f"Saved {key} to {csv_path}")
+                input_params[key] = csv_path  # Update to path for JSON saving
 
         # Save a json at the prefix config.json
         config_path = f"{output_prefix}_config.json"

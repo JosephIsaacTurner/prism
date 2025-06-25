@@ -38,6 +38,7 @@ dev = ["pytest"]
 
 [project.scripts]
 prism = "prism.prism_cli:main"
+prism_spatial_similarity = "prism.spatial_similarity_cli:main"
 
 [tool.setuptools.packages.find]
 where   = ["."]
