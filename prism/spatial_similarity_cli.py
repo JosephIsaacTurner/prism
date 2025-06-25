@@ -33,7 +33,7 @@ def main():
     for cfg_path in args.dataset_configs:
         ds = Dataset(config_path=cfg_path)
         ds.n_permutations = args.n_permutations
-        ds.mask_img = args.mask
+        ds.mask_img = args.mask_img if args.mask_img else None
         datasets.append(ds)
 
     pretty_print_all_datasets(datasets)
