@@ -16,7 +16,12 @@ def load_data(input):
     Returns:
     - data: numpy array, loaded data
     """
-    if not isinstance(input, str):
+
+    # If its list, convert to numpy array
+    if isinstance(input, (list, tuple)):
+        return np.array(input)
+
+    elif not isinstance(input, str):
         return input
 
     # CSV
@@ -54,10 +59,6 @@ def load_data(input):
     # NIfTI
     elif input.endswith(".nii") or input.endswith(".nii.gz"):
         data = nib.load(input)
-
-    # If its list, convert to numpy array
-    elif isinstance(input, (list, tuple)):
-        data = np.array(input)
 
     else:
         raise ValueError(
