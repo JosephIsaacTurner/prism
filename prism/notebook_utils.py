@@ -1,10 +1,13 @@
 from math import e
+import subprocess
+from getpass import getpass
 import os
 import pandas as pd
 import numpy as np
 from scipy.stats import zscore
 from IPython.display import display
 from sklearn.linear_model import LinearRegression
+from nilearn.maskers import NiftiMasker
 
 
 def pretty_print_df_info(df):
@@ -352,3 +355,132 @@ def pretty_print_analysis_summary(analysis_type, n_permutations, exchangeability
         print(f"\n{GREEN}✔ Setup complete. Ready to run the analysis.{RESET}")
     except Exception as e:
         print(f"{RED}❌ Error generating analysis summary: {e}{RESET}")
+
+
+def submit_slurm_job(
+    hostname,
+    username,
+    email,
+    conda_env,
+    output_dir,
+    output_basename,
+    input_images,
+    design,
+    contrast,
+    analysis_type="t",
+    n_permutations=5000,
+    f_contrast_indices=None,
+    eb_matrix=None,
+    two_tailed=True,
+    mask_img=None,
+    tfce=False,
+    accel_tail=True,
+    save_1minusp=True,
+    save_neglog10p=False,
+    save_permutations=False,
+    demean=False,
+    flip_signs=False,
+    vg_auto=False,
+    correct_across_contrasts=False,
+    zstat=False,
+    use_legacy_palm=False,
+    n_cores=12,
+    memory="16000",
+    time="12:00:00",
+    dry_run=False
+):
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Prepare input images
+    if use_legacy_palm:
+        print("Using legacy PALM; ensure FSL/MATLAB env is loaded.")
+        print("Concatenating into a 4D NIfTI may use lots of space.")
+        masker = NiftiMasker(mask_img=mask_img) if mask_img else NiftiMasker()
+        local_cores = 1
+        input_images_filepath = os.path.join(
+            output_dir, f"{output_basename}_4d_input_images_concat.nii"
+        )
+        if os.path.exists(input_images_filepath):
+            print(f"Skipping concatenation; {input_images_filepath} exists.")
+        else:
+            data = masker.fit_transform(input_images)
+            img4d = masker.inverse_transform(data)
+            img4d.to_filename(input_images_filepath)
+            print(f"Saved concatenated images to {input_images_filepath}")
+        env_setup = ". ~/.bashrc; module load MATLAB/2019b;"
+    else:
+        local_cores = n_cores
+        input_images_filepath = os.path.join(
+            output_dir, f"{output_basename}_input_images.csv"
+        )
+        pd.DataFrame(input_images, columns=['image']) \
+          .to_csv(input_images_filepath, index=False, header=False)
+        env_setup = ". ~/.bashrc;"
+
+    # Save design & contrast
+    design_fp = os.path.join(output_dir, f"{output_basename}_design.csv")
+    contrast_fp = os.path.join(output_dir, f"{output_basename}_contrast.csv")
+    design.to_csv(design_fp, index=False, header=False)
+    contrast.to_csv(contrast_fp, index=False, header=False)
+
+    # Build the command
+    cmd = "palm" if use_legacy_palm else "prism"
+    cmd += f" -i {input_images_filepath}"
+    cmd += f" -d {design_fp}"
+    cmd += f" -t {contrast_fp}"
+    cmd += f" -n {n_permutations}"
+    cmd += f" -o {os.path.join(output_dir, output_basename)}"
+    cmd += " -fdr -ee"
+
+    if mask_img:
+        cmd += f" -m {mask_img}"
+    if f_contrast_indices is not None:
+        f_fp = os.path.join(output_dir, f"{output_basename}_f_contrast_indices.csv")
+        pd.DataFrame(f_contrast_indices).to_csv(f_fp, index=False, header=False)
+        cmd += f" -f {f_fp}"
+    if eb_matrix is not None:
+        eb_fp = os.path.join(output_dir, f"{output_basename}_eb_matrix.csv")
+        pd.DataFrame(eb_matrix).to_csv(eb_fp, index=False, header=False)
+        cmd += f" -eb {eb_fp}"
+
+    # Additional flags
+    if vg_auto:                cmd += " -vg auto"
+    if two_tailed:             cmd += " -twotail"
+    if analysis_type == "pearson": cmd += " -pearson"
+    if zstat:                  cmd += " -zstat"
+    if accel_tail:             cmd += " -accel tail"
+    if demean:                 cmd += " -demean"
+    if correct_across_contrasts: cmd += " -corrcon"
+    if tfce:                   cmd += " -T"
+    if flip_signs:             cmd += " -ise"
+    if save_1minusp:           cmd += " -save1-p"
+    elif save_neglog10p:       cmd += " -logp"
+    if save_permutations:      cmd += " -saveperms"
+
+    # Create SLURM script
+    job_script = f"""#!/bin/bash
+#SBATCH -p nimlab,normal,bigmem,long
+#SBATCH -c {local_cores}
+#SBATCH --mem {memory}
+#SBATCH -o {output_dir}/slurm.%N.%j.out
+#SBATCH -e {output_dir}/slurm.%N.%j.err
+#SBATCH -t {time}
+#SBATCH --mail-user={email}
+#SBATCH --mail-type=END
+
+{env_setup}
+conda activate {conda_env}
+
+{cmd}
+"""
+    script_fp = os.path.join(output_dir, f"{output_basename}_palm_job.sh")
+    with open(script_fp, "w") as f:
+        f.write(job_script)
+    print(f"Job script saved to {script_fp}")
+    print(f"Submit with: \nsbatch {script_fp}")
+
+    if not dry_run:
+        # Submit via SSH
+        ssh_cmd = f"echo sbatch {script_fp} | sshpass -p {getpass('Enter your cluster password: ')} ssh {username}@{hostname}"
+        subprocess.run(ssh_cmd, shell=True)
+        print(f"Job submitted to {hostname} as {username}.")
