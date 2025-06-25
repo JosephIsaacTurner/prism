@@ -55,6 +55,10 @@ def load_data(input):
     elif input.endswith(".nii") or input.endswith(".nii.gz"):
         data = nib.load(input)
 
+    # If its list, convert to numpy array
+    elif isinstance(input, (list, tuple)):
+        data = np.array(input)
+
     else:
         raise ValueError(
             "Unsupported file format. Please provide a .csv, .npy, .txt, "
