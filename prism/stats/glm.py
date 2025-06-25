@@ -549,8 +549,10 @@ def partition_model(design, contrast):
     Cu = null_space(contrast.T)  # (p, p-q)
     r_nuis = Cu.shape[1]
 
-    regressors_of_interest = np.zeros((n, q, t), dtype=design.dtype)
-    nuisance_regressors = np.zeros((n, r_nuis, t), dtype=design.dtype)
+    # FIX: Use a float dtype to create the result arrays. This prevents
+    # the truncation of floating-point results when the input `design` is an integer array.
+    regressors_of_interest = np.zeros((n, q, t), dtype=np.float64)
+    nuisance_regressors = np.zeros((n, r_nuis, t), dtype=np.float64)
 
     for i in range(t):
         Di = design[:, :, i]
@@ -580,7 +582,6 @@ def partition_model(design, contrast):
         effective_contrast_overall,
         effective_contrast_interest,
     )
-
 
 
 def demean_glm_data(Y, X, C, f_contrast_indices=None):
