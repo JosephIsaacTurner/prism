@@ -143,8 +143,10 @@ class Dataset:
         )  # Assumes is_nifti_like utility exists
 
         if self.is_nifti:
-            if self._mask_img_input:
+            if self._mask_img_input and self.mask_img is None:
                 self.mask_img = load_nifti_if_not_already_nifti(self._mask_img_input)
+                self.masker = NiftiMasker(mask_img=self.mask_img)
+            elif self.mask_img is not None:
                 self.masker = NiftiMasker(mask_img=self.mask_img)
             else:
                 warnings.warn(
@@ -299,28 +301,28 @@ class Dataset:
             "contrast": self._contrast_input,
             "output_prefix": self.output_prefix,
             "f_contrast_indices": self._f_contrast_indices_input,
-            "two_tailed": self._two_tailed_input,
+            "two_tailed": self.two_tailed,
             "exchangeability_matrix": self._exchangeability_matrix_input,
-            "vg_auto": self._vg_auto_input,
+            "vg_auto": self.vg_auto,
             "variance_groups": self._variance_groups_input,
-            "within": self._within_input,
-            "whole": self._whole_input,
-            "flip_signs": self._flip_signs_input,
+            "within": self.within,
+            "whole": self.whole,
+            "flip_signs": self.flip_signs,
             "stat_function": self._stat_function_input,
             "f_stat_function": self._f_stat_function_input,
-            "f_only": self._f_only_input,
-            "n_permutations": self._n_permutations_input,
-            "accel_tail": self._accel_tail_input,
-            "save_1minusp": self._save_1minusp_input,
-            "save_neglog10p": self._save_neglog10p_input,
-            "correct_across_contrasts": self._correct_across_contrasts_input,
-            "random_state": self._random_state_input,
-            "demean": self._demean_input,
-            "zstat": self._zstat_input,
+            "f_only": self.f_only,
+            "n_permutations": self.n_permutations,
+            "accel_tail": self.accel_tail,
+            "save_1minusp": self.save_1minusp,
+            "save_neglog10p": self.save_neglog10p,
+            "correct_across_contrasts": self.correct_across_contrasts,
+            "random_state": self.random_state,
+            "demean": self.demean,
+            "zstat": self.zstat,
             "save_fn": self._save_fn_input,
             "permute_fn": self._permute_fn_input,
             "save_permutations": self._save_permutations_input,
-            "mask_img": self._mask_img_input,
+            "mask_img": self.mask_img,
             "tfce": self._tfce_input,
             "cmd": " ".join(sys.argv),
         }

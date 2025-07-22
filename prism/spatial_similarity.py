@@ -2,6 +2,7 @@ from .preprocessing import is_nifti_like, load_data, load_nifti_if_not_already_n
 from .datasets import Dataset
 from .permutation_inference import yield_permuted_stats, compute_p_values_accel_tail
 from .permutation_logic import get_vg_vector
+from .stats import demean_glm_data
 import nibabel as nib
 import numpy as np
 from typing import List, Optional, Union, Callable, Any, Generator
@@ -493,6 +494,11 @@ class _SpatialCorrelationAnalysis:
                 stat_function = dataset.stat_function
                 contrast = dataset.contrast[0, :] if dataset.contrast.ndim > 1 else dataset.contrast
 
+            if dataset.demean:
+                print(f"Demeaning dataset data and design matrix for dataset {i+1}.")
+                dataset.data, dataset.design, contrast, _ = demean_glm_data(
+                    dataset.data, dataset.design, contrast
+                )
 
             dataset.permuted_stat_generator = yield_permuted_stats(
                 data=dataset.data,
