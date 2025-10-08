@@ -1,5 +1,4 @@
 from .datasets import generate_null_data_vector
-from .preprocessing import get_data_vector_and_coord_matrix
 import numpy as np
 from tqdm import tqdm
 from nilearn.maskers import NiftiMasker
