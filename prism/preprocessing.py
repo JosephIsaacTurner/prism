@@ -5,6 +5,7 @@ import os
 import nibabel as nib
 from sklearn.utils import Bunch
 import pandas as pd
+import re
 
 
 def load_data(input):
@@ -196,7 +197,10 @@ class ResultSaver:
         if self.zstat:
             tag = f"z{tag}" if tag else None
 
-        return key.replace("stat", tag) if tag and "stat" in key else key
+        if tag and "stat" in key:
+            # Only replace the word "stat" as a whole token, not inside "tstat"
+            return re.sub(r'\bstat\b', tag, key)
+        return key
 
     def save_results(self, results):
         if self.output_prefix is None:
