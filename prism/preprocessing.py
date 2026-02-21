@@ -199,7 +199,8 @@ class ResultSaver:
 
         if tag and "stat" in key:
             # Only replace the word "stat" as a whole token, not inside "tstat"
-            return re.sub(r'\bstat\b', tag, key)
+            return re.sub(r'(?<![a-zA-Z0-9])stat(?![a-zA-Z0-9])', tag, key)
+
         return key
 
     def save_results(self, results):
