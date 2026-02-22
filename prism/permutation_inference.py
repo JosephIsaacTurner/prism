@@ -50,91 +50,40 @@ def permutation_analysis(
 
     Implements:
       1. **Beckmann partitioning** of the GLM into regressors of interest vs. nuisance.
-      2. **Freedman–Lane permutation** strategy:
-         a. Fit to estimate residuals wrt nuisance regressors.
-         b. Permute or sign-flip those residuals.
-         c. Add permuted residuals back onto the fitted nuisance part.
-         d. Recompute test statistics to build a null distribution.
-      3. Compute observed (true) statistics.
-      4. Derive empirical (uncorrected) p-values.
-      5. Apply Benjamini–Hochberg FDR correction.
-      6. Apply Westfall–Young max-statistic FWE correction (optionally with GPD tail acceleration).
+      2. **Freedman–Lane permutation** strategy.
+      3. Westfall–Young max-statistic FWE correction.
 
-    Parameters
-    ----------
-    data : np.ndarray, shape (n_samples, n_elements)
-        Observations matrix: rows are samples, columns are features/voxels.
-    design : np.ndarray, shape (n_samples, n_features)
-        Full design matrix for the GLM.
-    contrast : np.ndarray, shape (n_features,) or (n_contrasts, n_features)
-        Contrast vector or matrix defining hypotheses.
-    output_prefix : str or None
-        Prefix for any output files or saved arrays.
-    f_contrast_indices : array-like or None
-        Indices (or boolean mask) selecting rows of `contrast` for an F-test.
-    two_tailed : bool, default True
-        If True, compute two-tailed p-values (uses absolute statistics).
-    exchangeability_matrix : np.ndarray or None
-        Block structure for permutation; shape (n_samples,) or (n_samples, n_groups).
-    vg_auto : bool, default False
-        If True, auto-derive variance-group labels from `exchangeability_matrix`.
-    variance_groups : np.ndarray or None
-        Predefined variance-group labels for each sample.
-    within : bool, default True
-        When `exchangeability_matrix` is 1D, permute within blocks.
-    whole : bool, default False
-        When `exchangeability_matrix` is 1D, permute whole blocks.
-    flip_signs : bool, default False
-        If True, also sign-flip residuals (assumes symmetric errors).
-    stat_function : callable or 'auto', default 'auto'
-        Function to compute per-contrast test statistics (e.g., t).  
-        Signature: `stat, df1, df2 = stat_function(data, design, contrast[, variance_groups, n_groups])`
-    f_stat_function : callable or 'auto', default 'auto'
-        Function to compute F-statistics. Same signature as `stat_function`.
-    f_only : bool, default False
-        If True, skip individual contrasts and run only the specified F-test.
-    n_permutations : int, default 1000
-        Number of permutations to generate null distributions.
-    accel_tail : bool, default False
-        If True, use GPD tail acceleration for FWE p-values when exceedances are low.
-    save_1minusp : bool, default False
-        If True, store 1–p instead of raw p-values.
-    save_neglog10p : bool, default False
-        If True, store –log₁₀(p) instead of raw p-values.
-    correct_across_contrasts : bool, default False
-        If True, apply FWE correction jointly over all contrasts.
-    random_state : int, default 42
-        Seed for reproducibility.
-    demean : bool, default False
-        If True, demean the data before computing statistics.
-    zstat : bool, default False
-        If True, convert t-statistics to z-scores before p-value calculation.
-    save_fn : callable or None
-        If provided, called as `save_fn(results, key)` whenever a result is added.
-    permute_fn : callable or None
-        If provided, called each permutation as  
-        `permute_fn(permuted_stats, perm_index, is_two_tailed, *args, **kwargs)`.
-    save_permutations : bool, default False
-        If True, retain and return all permuted statistic arrays.
-    mask_img : Niimg-like or None
-        Optional mask to apply to data before analysis.
+    Args:
+        data (np.ndarray): Observations matrix (n_samples x n_features).
+        design (np.ndarray): Full design matrix (n_samples x n_regressors).
+        contrast (np.ndarray): Contrast vector or matrix.
+        output_prefix (str, optional): Prefix for output files.
+        f_contrast_indices (array-like, optional): Indices selecting rows of contrast for an F-test.
+        two_tailed (bool): If True, compute two-tailed p-values. Defaults to True.
+        exchangeability_matrix (np.ndarray, optional): Block structure for permutation.
+        vg_auto (bool): If True, auto-derive variance groups. Defaults to False.
+        variance_groups (np.ndarray, optional): Predefined variance group labels.
+        within (bool): Permute within blocks. Defaults to True.
+        whole (bool): Permute whole blocks. Defaults to False.
+        flip_signs (bool): Also sign-flip residuals. Defaults to False.
+        stat_function (str or callable): Test function (e.g., "auto", "pearson"). Defaults to "auto".
+        f_stat_function (str or callable): Test function for F-tests. Defaults to "auto".
+        f_only (bool): If True, skip individual contrasts and run only the F-test. Defaults to False.
+        n_permutations (int): Number of permutations. Defaults to 1000.
+        accel_tail (bool): Use GPD tail acceleration for p-values. Defaults to False.
+        save_1minusp (bool): Save 1-p maps. Defaults to False.
+        save_neglog10p (bool): Save -log10(p) maps. Defaults to False.
+        correct_across_contrasts (bool): Apply FWE correction jointly over all contrasts. Defaults to False.
+        random_state (int): Seed for reproducibility. Defaults to 42.
+        demean (bool): Demean data and design before analysis. Defaults to False.
+        zstat (bool): Convert statistics to z-scores. Defaults to False.
+        save_fn (callable, optional): Callback called when a result is saved.
+        permute_fn (callable, optional): Callback called for each permutation.
+        save_permutations (bool): Whether to save all permuted statistic maps. Defaults to False.
+        mask_img (Niimg-like, optional): Mask to apply to data before analysis.
 
-    Returns
-    -------
-    results : sklearn.utils.Bunch
-        A Bunch containing:
-          - Observed stats: `stat_c{i}`, `stat_f` (if F-test run).
-          - Uncorrected p-values: `stat_uncp_c{i}`, `stat_uncp_f`.
-          - FDR p-values: `stat_fdrp_c{i}`, `stat_fdrp_f`.
-          - FWE p-values: `stat_fwep_c{i}`, `stat_fwep_f`.
-          - Max-stat distributions: `max_stat_dist_c{i}`, `max_stat_dist_f`.
-          - If `correct_across_contrasts`: joint `stat_cfdrp_c{i}`, `stat_cfwep_c{i}`, `global_max_stat_dist`.
-          - (Optional) Saved permutations if `save_permutations=True`.
-
-    Notes
-    -----
-    - F-tests are one-tailed by construction; `two_tailed` is ignored for F-statistics.
-    - When using variance groups (`vg_auto` or `variance_groups`), ensure your stat functions support them.
+    Returns:
+        sklearn.utils.Bunch: Results containing observed stats, p-values, and max-stat distributions.
     """
     # Step Zero: Check inputs and setup
     if n_permutations <= 0:
@@ -568,76 +517,40 @@ def permutation_analysis_nifti(
     tfce=False,
 ):
     """
-    Perform dense volumetric permutation analysis on a set of 3D images or a 4D image.
+    Perform dense volumetric permutation analysis on NIfTI images.
 
-    Parameters
-    ----------
-    imgs : str or list of str or Niimg-like
-        File path(s) or Niimg-like object(s) for the input volumetric images.
-        Can be a list of 3D NIfTI image paths or a single 4D NIfTI path.
-    design : np.ndarray, shape (n_samples, n_features)
-        Design matrix for the GLM; rows correspond to samples, columns to regressors.
-    contrast : np.ndarray, shape (n_features,) or (n_contrasts, n_features)
-        Contrast vector or matrix defining the hypothesis tests.
-    output_prefix : str or None
-        Prefix to prepend to any output files or saved maps.
-    f_contrast_indices : array-like or None
-        Indices or boolean mask selecting rows of `contrast` for F-tests.
-    two_tailed : bool, default True
-        If True, compute two-tailed p-values (using absolute statistic values).
-    exchangeability_matrix : np.ndarray or None
-        Defines permutation blocks. 1D shape `(n_samples,)` or 2D shape `(n_samples, n_groups)`.
-    vg_auto : bool, default False
-        If True, derive variance-group labels automatically from `exchangeability_matrix`.
-    variance_groups : np.ndarray or None
-        Explicit variance-group labels per sample; overrides `vg_auto`.
-    within : bool, default True
-        When using a 1D exchangeability vector, permute within each block.
-    whole : bool, default False
-        When using a 1D exchangeability vector, permute whole blocks.
-    flip_signs : bool, default False
-        If True, also randomly flip residual signs (assumes symmetric errors).
-    stat_function : callable or 'auto', default 'auto'
-        Function to compute per-contrast test statistics (e.g., t-values).  
-        Signature: `stat, df1, df2 = stat_function(data, design, contrast[, variance_groups, n_groups])`
-    f_stat_function : callable or 'auto', default 'auto'
-        Function to compute F-statistics. Same signature as `stat_function`.
-    f_only : bool, default False
-        If True, skip individual contrast tests and run only the F-test(s).
-    n_permutations : int, default 1000
-        Number of permutations for null distribution.
-    accel_tail : bool, default False
-        If True, apply GPD tail acceleration for FWE p-values when exceedances are low.
-    save_1minusp : bool, default True
-        If True, store 1–p rather than raw p-values.
-    save_neglog10p : bool, default False
-        If True, store –log₁₀(p) rather than raw p-values.
-    correct_across_contrasts : bool, default False
-        If True, apply FWE correction jointly across all contrasts.
-    random_state : int, default 42
-        Seed for reproducibility.
-    demean : bool, default False
-        If True, demean the data before computing statistics.
-    zstat : bool, default False
-        If True, convert t-statistics to z-scores before p-value computation.
-    save_fn : callable or None
-        If provided, called as `save_fn(results, key)` whenever a result is added.
-    permute_fn : callable or None
-        If provided, called each permutation as  
-        `permute_fn(permuted_stats, perm_index, contrast_index, is_two_tailed, *args, **kwargs)`.
-    save_permutations : bool, default False
-        If True, retain and return all permuted statistic arrays.
-    mask_img : str or Niimg-like or None
-        File path or Niimg-like mask to apply to `imgs` before analysis.
-    tfce : bool, default False
-        If True, apply TFCE enhancement to test statistics instead of voxelwise stat.
+    Args:
+        imgs: Path(s) or Niimg-like object(s) for the input volumetric images.
+        design (np.ndarray): Design matrix (n_samples x n_regressors).
+        contrast (np.ndarray): Contrast vector or matrix defining the hypothesis tests.
+        output_prefix (str, optional): Prefix for output files.
+        f_contrast_indices (array-like, optional): Indices selecting rows of contrast for F-tests.
+        two_tailed (bool): If True, compute two-tailed p-values. Defaults to True.
+        exchangeability_matrix (np.ndarray, optional): structure defining exchangeable blocks.
+        vg_auto (bool): If True, derive variance groups automatically. Defaults to False.
+        variance_groups (np.ndarray, optional): Explicit variance group labels per sample.
+        within (bool): Permute within each block. Defaults to True.
+        whole (bool): Permute whole blocks. Defaults to False.
+        flip_signs (bool): Also randomly flip residual signs. Defaults to False.
+        stat_function (str or callable): Test function (e.g., "auto", "pearson"). Defaults to "auto".
+        f_stat_function (str or callable): Test function for F-tests. Defaults to "auto".
+        f_only (bool): If True, skip individual contrast tests and run only the F-test(s). Defaults to False.
+        n_permutations (int): Number of permutations. Defaults to 1000.
+        accel_tail (bool): If True, apply GPD tail acceleration for p-values. Defaults to False.
+        save_1minusp (bool): If True, store 1-p maps. Defaults to True.
+        save_neglog10p (bool): If True, store -log10(p) maps. Defaults to False.
+        correct_across_contrasts (bool): Apply FWE correction jointly across all contrasts. Defaults to False.
+        random_state (int): Seed for reproducibility. Defaults to 42.
+        demean (bool): If True, demean the data before analysis. Defaults to False.
+        zstat (bool): If True, convert statistics to z-scores. Defaults to False.
+        save_fn (callable, optional): Callback called when a result is saved.
+        permute_fn (callable, optional): Callback called for each permutation.
+        save_permutations (bool): Whether to save all permuted statistic maps. Defaults to False.
+        mask_img (str or Niimg-like, optional): Mask to apply to images before analysis.
+        tfce (bool): If True, apply Threshold-Free Cluster Enhancement. Defaults to False.
 
-    Returns
-    -------
-    results : sklearn.utils.Bunch
-        A Bunch containing observed statistics, uncorrected/FDR/FWE p-values,
-        max-stat distributions, and (optionally) saved permutations,
-        following the same structure as `permutation_analysis()`.
+    Returns:
+        sklearn.utils.Bunch: Results including observed stats, p-values, and TFCE results if enabled.
     """
     # Step One: Load volumetric images into a 2d matrix (n_samples x n_voxels)
     if mask_img is None:

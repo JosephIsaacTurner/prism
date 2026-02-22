@@ -177,37 +177,28 @@ def yield_permuted_indices(
     whole=None,
     random_state=None,
 ):
-    """Generator for permuting the design matrix per PALM documentation.
+    """
+    Generator for permuting the design matrix per PALM documentation.
 
     Handles free exchange, within-block, whole-block, combined within/whole,
     and multi-level exchangeability via positive/negative indices.
-    Docs: https://web.mit.edu/fsl_v5.0.10/fsl/doc/wiki/PALM(2f)ExchangeabilityBlocks.html
 
     Args:
         design (np.ndarray): Design matrix. Shape (n_samples, n_features).
         n_permutations (int): Number of permutations to generate.
-        random_state (int or np.random.Generator or None): Seed or Generator
-            for the random number generator.
-        exchangeability_matrix (np.ndarray or None): Matrix or vector defining
+        contrast (np.ndarray, optional): Contrast vector or matrix.
+        exchangeability_matrix (np.ndarray, optional): Structure defining
             exchangeability blocks. Shape (n_samples,) or (n_samples, n_levels).
-            If None, free exchange is assumed. Defaults to None.
-        within (bool | None): For single-column blocks, allow shuffling within blocks.
-                       If None (default): Behavior depends on 'whole'. If 'whole' is also None or False,
-                       defaults to True. If 'whole' is True, defaults to False.
-                       Ignored if exchangeability_matrix has >1 column or if None.
-        whole (bool | None): For single-column blocks, shuffle blocks as wholes.
-                      If None (default): Defaults to False.
-                      Ignored if exchangeability_matrix has >1 column or if None.
+        within (bool, optional): Allow shuffling within blocks for single-column EB.
+        whole (bool, optional): Shuffle blocks as wholes for single-column EB.
+        random_state (int or np.random.Generator, optional): Seed or RNG.
 
     Yields:
-        np.ndarray: A permuted version of the design matrix.
+        np.ndarray: A vector of permuted row indices.
 
     Raises:
-        ValueError: If inputs are inconsistent (e.g., non-uniform block sizes
-                    required for whole-block shuffling, ambiguous multi-col structure,
-                    zero indices in eb_matrix).
-        TypeError: If design or exchangeability_matrix is not a numpy array or
-                   if eb_matrix contains non-numeric data.
+        ValueError: If inputs are inconsistent or zero indices are found in EB matrix.
+        TypeError: If inputs are not NumPy arrays.
     """
     # --- Input Validation ---
     if not isinstance(design, np.ndarray):
@@ -390,28 +381,16 @@ def get_vg_vector(exchangeability_matrix, within=True, whole=False):
     Calculates the variance group (VG) vector based on exchangeability rules.
 
     Args:
-        exchangeability_matrix (np.ndarray):
-            A 1D or 2D numpy array defining exchangeability blocks.
-            - For 1D: Integer indices defining blocks. 'within' and 'whole' flags matter.
-            - For 2D: Defines nested exchangeability. Flags are ignored.
-              - Positive index in col k: Sub-indices in col k+1 shuffle as a whole.
-              - Negative index in col k: Sub-indices in col k+1 shuffle within block.
-        within (bool, optional):
-            If True and exchangeability_matrix is 1D and whole=False,
-            indicates within-block exchangeability. Defaults to True.
-        whole (bool, optional):
-            If True and exchangeability_matrix is 1D, indicates whole-block
-            exchangeability. Overrides 'within' if both are True for VG calc.
-            Defaults to False.
+        exchangeability_matrix (np.ndarray): Defines exchangeability blocks.
+        within (bool, optional): Indicates within-block exchangeability for 1D EB.
+        whole (bool, optional): Indicates whole-block exchangeability for 1D EB.
 
     Returns:
-        np.ndarray: A 1D numpy array of unique integer identifiers (starting from 1)
-                    defining the variance groups (vg_vector) for each observation.
+        np.ndarray: A 1D array of group identifiers defining the variance groups.
 
     Raises:
-        ValueError: If inputs are inconsistent (e.g., non-uniform block sizes
-                    required for whole-block shuffling, ambiguous multi-col structure).
-        TypeError: If exchangeability_matrix is not a numpy array.
+        ValueError: If inputs are inconsistent or non-integer values are found.
+        TypeError: If input is not a NumPy array.
     """
 
     if not isinstance(exchangeability_matrix, np.ndarray):

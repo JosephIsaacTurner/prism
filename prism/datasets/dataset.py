@@ -14,6 +14,14 @@ import sys
 class Dataset:
     """
     Represents a single dataset for analysis, handling data loading and masking.
+
+    Attributes:
+        data (np.ndarray): Masked data matrix (samples x features).
+        design (np.ndarray): Design matrix (samples x regressors).
+        contrast (np.ndarray): Contrast vector or matrix.
+        mask_img (nib.Nifti1Image): Mask image for NIfTI data.
+        masker (NiftiMasker): Nilearn masker object.
+        is_nifti (bool): Whether the input data is NIfTI-like.
     """
 
     def __init__(
@@ -50,6 +58,40 @@ class Dataset:
     ):
         """
         Initializes the Dataset object with the provided parameters.
+
+        Args:
+            config_path: Path to a JSON configuration file. If provided, other arguments are ignored.
+            data: Input data. Can be a path to a NIfTI, CSV, or NPY file, or a NumPy array/Nifti1Image.
+            design: Design matrix. Can be a path to a CSV/NPY file or a NumPy array.
+            contrast: Contrast vector or matrix. Can be a path to a CSV/NPY file or a NumPy array.
+            output_prefix: Prefix for output files.
+            f_contrast_indices: Boolean array or path to one, indicating which contrasts to include in an F-test.
+            two_tailed: Whether to perform a two-tailed test. Defaults to True.
+            exchangeability_matrix: Structure defining exchangeable blocks for permutations.
+            vg_auto: Whether to automatically derive variance groups from the exchangeability matrix.
+            variance_groups: Predefined variance groups for each sample.
+            within: Whether to permute within blocks defined by the exchangeability matrix.
+            whole: Whether to permute blocks as a whole.
+            flip_signs: Whether to also perform sign-flipping permutations.
+            stat_function: Function or name ("auto", "pearson") for T-like statistics.
+            f_stat_function: Function or name ("auto", "pearson") for F-like statistics.
+            f_only: If True, only perform F-tests.
+            n_permutations: Number of permutations to perform.
+            accel_tail: If True, use GPD tail-fitting for p-values.
+            save_1minusp: Whether to save 1-p maps.
+            save_neglog10p: Whether to save -log10(p) maps.
+            correct_across_contrasts: Whether to apply FWE correction across all contrasts.
+            random_state: Seed or RandomState for reproducibility.
+            demean: Whether to demean data and design before analysis.
+            zstat: Whether to convert statistics to z-scores.
+            save_fn: Callback function called when a result is saved.
+            permute_fn: Callback function called for each permutation.
+            save_permutations: Whether to save all permuted statistic maps.
+            mask_img: Mask image for NIfTI data.
+            tfce: Whether to apply Threshold-Free Cluster Enhancement.
+
+        Raises:
+            ValueError: If neither config_path nor data/design/contrast are provided.
         """
         if config_path is None and (data is None or design is None or contrast is None):
             raise ValueError(
@@ -136,7 +178,13 @@ class Dataset:
         self.f_contrast_indices = f_contrast_indices
 
     def load_data(self):
-        """Loads data, design, contrast, and optional arrays from inputs."""
+        """
+        Loads data, design, contrast, and optional arrays from inputs.
+
+        Raises:
+            TypeError: If loaded data is not a NumPy array or NIfTI image.
+            ValueError: If there's a shape mismatch between data, design, or contrast.
+        """
         # --- Load Main Data (and handle masking if NIfTI) ---
         loaded_data = load_data(self._data_input)  # Assumes load_data utility exists
         self.is_nifti = is_nifti_like(
@@ -243,6 +291,9 @@ class Dataset:
             
     @property
     def params(self):
+        """
+        Returns a dictionary of all analysis parameters.
+        """
         return {
             "data": self.data,
             "design": self.design,
@@ -278,8 +329,10 @@ class Dataset:
     def permutation_analysis(self):
         """
         Perform permutation test on the loaded data.
+
         Returns:
-        - results: sklearn.Bunch, results of the permutation test
+            sklearn.utils.Bunch: Results of the permutation test, containing observed statistics,
+                uncorrected p-values, and corrected p-values (FDR, FWE).
         """
         self.load_data()  # Ensure data is loaded
         params = self.params.copy()
@@ -353,6 +406,12 @@ class Dataset:
         return indices_results
     
     def save_config(self):
+        """
+        Saves the current configuration to a JSON file and returns the path.
+
+        Returns:
+            str: Path to the saved JSON configuration file.
+        """
         input_params = {
             "data": self._data_input,
             "design": self._design_input,
@@ -412,6 +471,12 @@ class Dataset:
     def parse_config(self, config_path: str):
         """
         Parses a configuration file and updates the Dataset instance.
+
+        Args:
+            config_path: Path to the JSON configuration file.
+
+        Returns:
+            tuple: All parameters loaded from the configuration file.
         """
         with open(config_path, "r") as f:
             params = json.load(f)
@@ -424,6 +489,9 @@ class Dataset:
         - stat_function ∈ {"auto", "pearson"} or a callable
         - f_stat_function ∈ {"auto", "pearson"} or a callable
         - use_variance_groups, zstat, perform_f_test
+
+        Returns:
+            tuple: (actual_t_stat_fn, actual_f_stat_fn)
         """
         use_variance_groups = self.vg_auto or self.variance_groups is not None
         perform_f_test = self.f_only or self.f_contrast_indices is not None

@@ -10,12 +10,17 @@ import re
 
 def load_data(input):
     """
-    Load the input data from a file.
-    Parameters:
-    - input: str or already-loaded data
+    Load the input data from a file or use already-loaded data.
+
+    Args:
+        input: Path to a file (.csv, .npy, .txt, .nii, .nii.gz, .tsv, .con, .mat),
+            a list/tuple, or already-loaded data (NumPy array or Nifti1Image).
 
     Returns:
-    - data: numpy array, loaded data
+        np.ndarray or nib.Nifti1Image: The loaded data.
+
+    Raises:
+        ValueError: If the file format is not supported.
     """
 
     # If its list, convert to numpy array
@@ -72,12 +77,16 @@ def load_data(input):
 
 def load_nifti_if_not_already_nifti(img):
     """
-    Load the image if it is not already a Nifti1Image.
-    Parameters:
-    - img: str or nibabel.Nifti1Image, path to the image or the image object
+    Load an image if it's provided as a path, otherwise ensure it's a Nifti1Image.
+
+    Args:
+        img: Path to a NIfTI file or a nibabel.Nifti1Image object.
 
     Returns:
-    - img: nibabel.Nifti1Image, loaded image
+        nib.Nifti1Image: The loaded NIfTI image.
+
+    Raises:
+        ValueError: If the input is neither a path nor a Nifti1Image.
     """
     if isinstance(img, str):
         img = nib.load(img)
@@ -91,12 +100,13 @@ def load_nifti_if_not_already_nifti(img):
 def is_nifti_like(data):
     """
     Check if the input data is Nifti-like.
-    Parameters:
-    - data: object to check
+
+    Args:
+        data: The object to check. Can be a Nifti1Image, a path to one,
+            or a sequence of those.
 
     Returns:
-    - bool: True if data is Nifti-like (a Nifti1Image, a .nii/.nii.gz path,
-            or a list/tuple of those), False otherwise
+        bool: True if data is Nifti-like, False otherwise.
     """
     # single image
     if isinstance(data, nib.Nifti1Image):
@@ -114,6 +124,19 @@ def is_nifti_like(data):
 
 
 class ResultSaver:
+    """
+    Handles naming and saving of analysis results and permutations.
+
+    Attributes:
+        output_prefix (str): Prefix for all saved files.
+        variance_groups (np.ndarray): Variance group vector.
+        stat_fn (str): Name of the T-statistic function used.
+        f_stat_fn (str): Name of the F-statistic function used.
+        n_t_contrasts (int): Number of T-contrasts tested.
+        permutation_output_dir (str): Directory for saving permutations.
+        zstat (bool): Whether statistics were converted to z-scores.
+        masker (NiftiMasker): Masker used for volumetric data.
+    """
     def __init__(
         self,
         output_prefix="",

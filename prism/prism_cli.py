@@ -370,6 +370,9 @@ def get_output_path(output_arg):
 
 
 def main():
+    """
+    Main entry point for the Prism CLI.
+    """
     parser = setup_parser()
     args, unknown = parser.parse_known_args()
     args = validate_args(args)

@@ -17,30 +17,18 @@ Generalized linear model (GLM) statistics.
 @jit
 def t(Y, X, C):
     """
-    Compute GLM t‐statistics for a single contrast.
+    Compute GLM t-statistics for a single contrast.
 
-    Parameters
-    ----------
-    Y : array, (n, p)
-        Response data.
-    X : array, (n, k)
-        Design matrix.
-    C : array, (k,)
-        Contrast vector.
+    Args:
+        Y (jnp.ndarray): Response data (n_samples x n_features).
+        X (jnp.ndarray): Design matrix (n_samples x n_regressors).
+        C (jnp.ndarray): Contrast vector (n_regressors,).
 
-    Returns
-    -------
-    t_vals : array, (p,)
-        t = (Cᵀβ) / SE, where
-          β = (XᵀX)⁻¹ Xᵀ Y,
-          df = n − k,
-          MSE = ∑(resid²)/df,
-          var_C = Cᵀ(XᵀX)⁻¹ C,
-          SE = √(var_C · MSE).
-
-    Notes
-    -----
-    0/0→0, k/0→±∞.
+    Returns:
+        tuple: (t_vals, df1, df2)
+            - t_vals (jnp.ndarray): t-statistics for each feature.
+            - df1 (int): Numerator degrees of freedom (always 1).
+            - df2 (int): Denominator degrees of freedom (n_samples - n_regressors).
     """
     n, p = Y.shape
     C = jnp.ravel(C)
@@ -61,38 +49,20 @@ def t(Y, X, C):
 @partial(jit, static_argnums=(4,))
 def aspin_welch_v(Y, X, C, groups, J_max):
     """
-    Compute Aspin–Welch v‐statistics for a single contrast.
+    Compute Aspin-Welch v-statistics for a single contrast.
 
-    Parameters
-    ----------
-    Y : array, (n, p)
-        Response data.
-    X : array, (n, k)
-        Design matrix.
-    C : array, (k,)
-        Contrast vector.
-    groups : int array, (n,)
-        Group membership.
-    J_max : int
-        Max number of groups.
+    Args:
+        Y (jnp.ndarray): Response data (n_samples x n_features).
+        X (jnp.ndarray): Design matrix (n_samples x n_regressors).
+        C (jnp.ndarray): Contrast vector (n_regressors,).
+        groups (jnp.ndarray): Group membership for each sample.
+        J_max (int): Maximum number of groups (static).
 
-    Returns
-    -------
-    v_vals : array, (p,)
-        v = (Cᵀ β) / √den, where
-          β        = (Xᵀ X)⁻¹ Xᵀ Y,
-          Hᵢᵢ      = diagonal of X (Xᵀ X)⁻¹ Xᵀ,
-          d_b      = ∑₍i∈group_b₎ (1 − Hᵢᵢ),
-          RSS_b    = ∑₍i∈group_b₎ resid_i²,
-          W_b      = d_b / RSS_b,
-          M_b      = ∑₍i∈group_b₎ x_i x_iᵀ,
-          cte      = ∑₍b=1…J₎ M_b · W_b,
-          den      = Cᵀ [pinv(cte)] C,
-          resid    = Y − X β.
-
-    Notes
-    -----
-    0/0 → 0, k/0 → ±∞.
+    Returns:
+        tuple: (v_vals, df1, df2)
+            - v_vals (jnp.ndarray): v-statistics for each feature.
+            - df1 (int): Numerator degrees of freedom (always 1).
+            - df2 (jnp.ndarray): Sattherthwaite degrees of freedom.
     """
     n, p = Y.shape
     C = jnp.ravel(C)
@@ -123,29 +93,18 @@ def aspin_welch_v(Y, X, C, groups, J_max):
 @jit
 def F(Y, X, C):
     """
-    Compute GLM F‐statistics for multiple contrasts.
+    Compute GLM F-statistics for multiple contrasts.
 
-    Parameters
-    ----------
-    Y : array, (n, p)
-        Response data.
-    X : array, (n, k)
-        Design matrix.
-    C : array, (m, k)
-        Contrast matrix.
+    Args:
+        Y (jnp.ndarray): Response data (n_samples x n_features).
+        X (jnp.ndarray): Design matrix (n_samples x n_regressors).
+        C (jnp.ndarray): Contrast matrix (n_contrasts x n_regressors).
 
-    Returns
-    -------
-    F_vals : array, (p,)
-        F = [(Cβ)' (C (XᵀX)⁻¹ Cᵀ)⁻¹ (Cβ) / m] / MSE, where
-          β    = (XᵀX)⁻¹ Xᵀ Y,
-          df₂  = n − rank(X),
-          MSE  = ∑(resid²)/df₂,
-          m    = rank(C).
-
-    Notes
-    -----
-    0/0 → 0, k/0 → ±∞.
+    Returns:
+        tuple: (F_vals, df1, df2)
+            - F_vals (jnp.ndarray): F-statistics for each feature.
+            - df1 (int): Numerator degrees of freedom (rank(C)).
+            - df2 (int): Denominator degrees of freedom (n_samples - rank(X)).
     """
     n, p = Y.shape
     # fit GLM
@@ -174,40 +133,20 @@ def F(Y, X, C):
 @partial(jit, static_argnums=(4,))
 def G(Y, X, C, groups, J_max):
     """
-    Compute Aspin–Welch G‐statistics for multiple contrasts.
+    Compute Aspin-Welch G-statistics for multiple contrasts.
 
-    Parameters
-    ----------
-    Y : array, (n, p)
-        Response data.
-    X : array, (n, k)
-        Design matrix.
-    C : array, (m, k)
-        Contrast matrix.
-    groups : int array, (n,)
-        Group membership.
-    J_max : int
-        Max number of groups (static for jitting).
+    Args:
+        Y (jnp.ndarray): Response data (n_samples x n_features).
+        X (jnp.ndarray): Design matrix (n_samples x n_regressors).
+        C (jnp.ndarray): Contrast matrix (n_contrasts x n_regressors).
+        groups (jnp.ndarray): Group membership for each sample.
+        J_max (int): Maximum number of groups (static).
 
-    Returns
-    -------
-    G_vals : array, (p,)
-        G = [(Cβ)' V⁻¹ (Cβ) / m] / [1 + 2·(m−1)·b], where
-          β      = (XᵀX)⁻¹ Xᵀ Y,
-          V      = C · pinv(cte) · Cᵀ,
-          cte    = ∑₍b=1…J_max₎ Mᵦ · W_int[ᵦ],
-          Mᵦ     = ∑₍i∈groupᵦ₎ xᵢ xᵢᵀ,
-          W_intᵦ = dᵦ / rssᵦ,
-          dᵦ     = ∑₍i∈groupᵦ₎ (1 − hᵢᵢ),
-          rssᵦ   = ∑₍i∈groupᵦ₎ residᵢ²,
-          W_finᵦ = W_intᵦ · countᵦ,
-          sW     = ∑₍ᵦ₎ W_finᵦ,
-          b      = [∑₍ᵦ₎ (1 − W_finᵦ/sW)² / dᵦ] / [m·(m+2)],
-          m      = rank(C).
-
-    Notes
-    -----
-    0/0 → 0, k/0 → ±∞.
+    Returns:
+        tuple: (G_vals, df1, df2)
+            - G_vals (jnp.ndarray): G-statistics for each feature.
+            - df1 (int): Numerator degrees of freedom (rank(C)).
+            - df2 (jnp.ndarray): Sattherthwaite degrees of freedom.
     """
     n, p = Y.shape
     # fit GLM
@@ -259,28 +198,16 @@ def pearson_r(Y, X, C, *args, **kwargs):
     """
     Compute GLM-based Pearson r for a single contrast.
 
-    Parameters
-    ----------
-    Y : array, (n, p)
-        Response data.
-    X : array, (n, k)
-        Design matrix.
-    C : array, (k,)
-        Contrast vector.
+    Args:
+        Y (jnp.ndarray): Response data (n_samples x n_features).
+        X (jnp.ndarray): Design matrix (n_samples x n_regressors).
+        C (jnp.ndarray): Contrast vector (n_regressors,).
 
-    Returns
-    -------
-    r_vals : array, (p,)
-        r = CB / √(CB² + df·var_C·MSE), where
-          β = (XᵀX)⁻¹ Xᵀ Y,
-          CB = C β,
-          var_C = Cᵀ(XᵀX)⁻¹ C,
-          df = n − k,
-          MSE = ∑(Y − Xβ)²/df.
-
-    Notes
-    -----
-    r in [−1, 1];  0/0→0, ±/0→±∞.
+    Returns:
+        tuple: (r_vals, df1, df2)
+            - r_vals (jnp.ndarray): Pearson r values.
+            - df1 (int): Always 1.
+            - df2 (int): Denominator degrees of freedom.
     """
     n, p = Y.shape
     C = jnp.ravel(C)
@@ -306,29 +233,16 @@ def r_squared(Y, X, C, *args, **kwargs):
     """
     Compute GLM-based coefficient of determination (R²) for one or multiple contrasts.
 
-    Parameters
-    ----------
-    Y : array, (n, p)
-        Response data.
-    X : array, (n, k)
-        Design matrix.
-    C : array, (k,) or (m, k)
-        Contrast vector or matrix.
+    Args:
+        Y (jnp.ndarray): Response data (n_samples x n_features).
+        X (jnp.ndarray): Design matrix (n_samples x n_regressors).
+        C (jnp.ndarray): Contrast vector or matrix.
 
-    Returns
-    -------
-    r2_vals : array, (p,)
-        R² = SS_mod / (SS_mod + df·MSE), where
-          β = (XᵀX)⁻¹ Xᵀ Y,
-          CB = C β,
-          V = C (XᵀX)⁻¹ Cᵀ,
-          SS_mod = CBᵀ V⁻¹ CB,
-          df = n − k,
-          MSE = ∑(Y − Xβ)²/df.
-
-    Notes
-    -----
-    R² in [0, 1];  0/0→0.
+    Returns:
+        tuple: (r2_vals, df1, df2)
+            - r2_vals (jnp.ndarray): R-squared values.
+            - df1 (int): Numerator degrees of freedom (rank(C)).
+            - df2 (int): Denominator degrees of freedom (n_samples - n_regressors).
     """
     n, p = Y.shape
     k = X.shape[1]

@@ -27,32 +27,22 @@ def spatial_similarity_permutation_analysis(
     accel_tail=False
 ) -> Optional[Bunch]:
     """
-    Computes spatial correlations between dataset statistic maps and reference maps,
-    using permutation testing to assess significance.
+    Computes spatial correlations between dataset statistic maps and reference maps.
 
-    Parameters
-    ----------
-    datasets : Dataset or list of Dataset objects
-        The datasets to compare. Each Dataset object should contain necessary
-        parameters for statistic calculation and permutations.
-    reference_maps : NIfTI path/object, np.ndarray, or list thereof, optional
-        Reference maps to compare against. Must be compatible (in feature space)
-        with the dataset statistic maps after potential masking.
-    two_tailed : bool, default True
-        If True, computes two-tailed p-values. If False, computes one-tailed
-        (right-tailed) p-values.
+    Uses permutation testing to assess the significance of observed correlations.
 
-    Returns
-    -------
-    results : Bunch or None
-        An sklearn.Bunch object containing the results, or None if the analysis cannot proceed
-        (e.g., due to insufficient inputs). The object contains:
-        - 'corr_matrix_ds_ds': (N_datasets x N_datasets) array of true correlations, or None.
-        - 'corr_matrix_ds_ref': (N_datasets x N_references) array of true correlations, or None.
-        - 'p_matrix_ds_ds': (N_datasets x N_datasets) array of p-values (diag=NaN), or None.
-        - 'p_matrix_ds_ref': (N_datasets x N_references) array of p-values, or None.
-        - 'corr_matrix_perm_ds_ds': (N_perm x N_datasets x N_datasets) array, or None.
-        - 'corr_matrix_perm_ds_ref': (N_perm x N_datasets x N_references) array, or None.
+    Args:
+        datasets: The datasets to compare. Each Dataset object should contain necessary
+            parameters for statistic calculation and permutations.
+        reference_maps: Reference maps to compare against. Must be compatible with the dataset
+            statistic maps after potential masking.
+        two_tailed: If True, computes two-tailed p-values. Defaults to True.
+        compare_func: Optional custom similarity function(vec1, vec2) -> float.
+        accel_tail: If True, apply GPD tail acceleration for p-values. Defaults to False.
+
+    Returns:
+        Optional[Bunch]: Results containing correlation matrices, p-value matrices, and
+            permuted correlation distributions.
     """
     analyzer = _SpatialCorrelationAnalysis(
         datasets, reference_maps, two_tailed, compare_func, accel_tail

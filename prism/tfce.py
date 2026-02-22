@@ -7,7 +7,16 @@ import warnings
 
 def atleast_4d(arr):
     """
-    Function to ensure that the input array is 4D.
+    Ensures that the input array is at least 4D.
+
+    Args:
+        arr (np.ndarray): The input array.
+
+    Returns:
+        np.ndarray: The input array with at least 4 dimensions.
+
+    Raises:
+        ValueError: If the input array is not 3D or 4D.
     """
     if arr.ndim == 3:
         return np.expand_dims(arr, axis=-1)  # Adds an extra dimension at the end
@@ -54,11 +63,13 @@ def calculate_auto_dh(map_vector, two_tailed=True):
 def apply_tfce(img, two_tailed=True):
     """
     Apply TFCE to volumetric neuroimaging data.
-    Parameters:
-    - img: Nifti1Img of the data to apply TFCE to
-    
-    Returns: 
-    - tfce_data_vector: 1d numpy array of data_vector after applying TFCE
+
+    Args:
+        img (nib.Nifti1Image): The image to apply TFCE to.
+        two_tailed (bool, optional): Whether to perform a two-tailed test. Defaults to True.
+
+    Returns:
+        nib.Nifti1Image: The TFCE-enhanced image.
     """
     img_data = img.get_fdata()
 

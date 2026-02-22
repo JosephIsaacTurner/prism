@@ -10,17 +10,20 @@ from jax.scipy.stats import norm
 def logistic_wald_test(Y, X, C, l2_reg=1e-4, max_iter=15, tol=1e-5):
     """
     Vectorized Mass-Univariate Logistic Regression (IRLS).
-    s
-    Parameters
-    ----------
-    Y : array (n, p) - Binary response matrix (e.g. streamlines, voxels).
-    X : array (n, k) - Design matrix.
-    C : array (k,)   - Contrast vector.
-    
-    Returns
-    -------
-    z_vals : array (p,) - Z-statistics for the contrast.
-    p_vals : array (p,) - Two-tailed p-values.
+
+    Args:
+        Y (jnp.ndarray): Binary response matrix (n_samples x n_features).
+        X (jnp.ndarray): Design matrix (n_samples x n_regressors).
+        C (jnp.ndarray): Contrast vector (n_regressors,).
+        l2_reg (float, optional): L2 regularization parameter. Defaults to 1e-4.
+        max_iter (int, optional): Maximum number of iterations. Defaults to 15.
+        tol (float, optional): Convergence tolerance. Defaults to 1e-5.
+
+    Returns:
+        tuple: (z_vals, p_vals, df)
+            - z_vals (jnp.ndarray): Z-statistics for the contrast.
+            - p_vals (jnp.ndarray): Two-tailed p-values.
+            - df (int): Always 1.
     """
     n, k = X.shape
     
@@ -178,7 +181,18 @@ def mass_univariate_logistic_regression(
     """
     Run IRLS logistic regression per outcome unit.
 
-    Returns only z-statistics, p-values, and optional AUCs.
+    Args:
+        Y (jnp.ndarray): Response matrix (n_samples x n_features).
+        X (jnp.ndarray): Design matrix (n_samples x n_regressors).
+        C (jnp.ndarray): Contrast vector or matrix.
+        max_iter (int, optional): Maximum number of iterations. Defaults to 100.
+        tol (float, optional): Convergence tolerance. Defaults to 1e-7.
+        ridge (float, optional): Ridge regularization parameter. Defaults to 1e-8.
+        eps (float, optional): Small epsilon for numerical stability. Defaults to 1e-9.
+        calculate_auc (bool, optional): Whether to calculate AUC. Defaults to True.
+
+    Returns:
+        sklearn.utils.Bunch: Results containing z-statistics, p-values, and optional AUCs.
     """
     Y_j = jnp.asarray(Y, dtype=jnp.result_type(float))
     X_j = jnp.asarray(X, dtype=jnp.result_type(float))
