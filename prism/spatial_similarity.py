@@ -537,7 +537,7 @@ class _SpatialCorrelationAnalysis:
             # Get stats for current permutation
             for i, dataset in enumerate(self.datasets):
                 try:
-                    perm_stat = next(dataset.permuted_stat_generator)
+                    perm_stat, permuted_indices = next(dataset.permuted_stat_generator)
                     permuted_stats_current[:, i] = perm_stat.ravel()
                 except StopIteration:
                     raise RuntimeError(

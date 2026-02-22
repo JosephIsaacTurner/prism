@@ -6,6 +6,7 @@ from typing import Callable, Optional, Union
 from nilearn.maskers import NiftiMasker
 from prism.preprocessing import load_data, load_nifti_if_not_already_nifti, is_nifti_like
 from prism.permutation_inference import permutation_analysis, permutation_analysis_nifti
+from prism.permutation_logic import yield_permuted_indices
 from prism.stats import t, t_z, aspin_welch_v, aspin_welch_v_z, F, F_z, G, G_z, r_squared, r_squared_z, pearson_r, fisher_z, demean_glm_data
 import json
 import sys
@@ -293,6 +294,63 @@ class Dataset:
                 **params
             )
         return results
+    
+    def generate_permutation_indices(self):
+        """
+        Generates and returns the permuted indices used for each contrast.
+
+        Returns:
+            dict: A dictionary mapping contrast labels (e.g., 'c1', 'f') to
+                  a numpy array of shape (n_permutations, n_samples).
+        """
+        self.load_data()
+
+        # Assemble contrast labels exactly as in permutation_inference.py
+        original_contrast = np.atleast_2d(self.contrast)
+        n_t_contrasts = original_contrast.shape[0]
+
+        contrast_labels = []
+        if not self.f_only:
+            for i in range(n_t_contrasts):
+                contrast_labels.append(f"c{i+1}")
+
+        perform_f_test = self.f_only or self.f_contrast_indices is not None
+        if perform_f_test:
+            contrast_labels.append("f")
+
+        indices_results = {}
+        # Base random state
+        base_rs = self.random_state if self.random_state is not None else 42
+
+        for idx, label in enumerate(contrast_labels):
+            # Mirror the random state shift used in permutation_inference.py
+            if isinstance(base_rs, (int, np.integer)):
+                current_rs = base_rs + idx
+            else:
+                current_rs = base_rs
+
+            gen = yield_permuted_indices(
+                design=self.design,
+                n_permutations=self.n_permutations,
+                exchangeability_matrix=self.exchangeability_matrix,
+                within=self.within,
+                whole=self.whole,
+                random_state=current_rs
+            )
+
+            # Collect all permutations for this contrast
+            indices_results[label] = np.array(list(gen), dtype=int)
+
+        # Optional saving logic
+        if self.output_prefix:
+            if os.path.dirname(self.output_prefix):
+                os.makedirs(os.path.dirname(self.output_prefix), exist_ok=True)
+            for label, indices in indices_results.items():
+                save_path = f"{self.output_prefix}_permuted_indices_{label}.csv"
+                np.savetxt(save_path, indices, delimiter=",", fmt='%d')
+                print(f"Saved permuted indices for {label} to {save_path}")
+
+        return indices_results
     
     def save_config(self):
         input_params = {

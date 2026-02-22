@@ -113,7 +113,7 @@ def permutation_analysis(
         If provided, called as `save_fn(results, key)` whenever a result is added.
     permute_fn : callable or None
         If provided, called each permutation as  
-        `permute_fn(permuted_stats, perm_index, is_two_tailed)`.
+        `permute_fn(permuted_stats, perm_index, is_two_tailed, *args, **kwargs)`.
     save_permutations : bool, default False
         If True, retain and return all permuted statistic arrays.
     mask_img : Niimg-like or None
@@ -323,7 +323,7 @@ def permutation_analysis(
         except Exception as e:
             print(f"Error saving results: {e}")
 
-    def permute_fn_wrapper(permuted_stats, perm_idx, contrast_idx, two_tailed):
+    def permute_fn_wrapper(permuted_stats, perm_idx, contrast_idx, two_tailed, *args, **kwargs):
         """Function to handle permutation results."""
         # Save permutations if output output_prefix and save_permutations are provided
         if output_prefix is not None and save_permutations:
@@ -331,7 +331,7 @@ def permutation_analysis(
 
         # Call the user-defined callback if provided
         if permute_fn is not None:
-            permute_fn(permuted_stats, perm_idx, contrast_idx, two_tailed)
+            permute_fn(permuted_stats, perm_idx, contrast_idx, two_tailed, *args, **kwargs)
 
     # Initialize results
     results = Bunch()
@@ -391,7 +391,7 @@ def permutation_analysis(
         observed_stats = results[f"stat_{label}"]
         exceedances = np.zeros_like(observed_stats, dtype=float)
         max_stat_dist = np.zeros(n_permutations)
-
+        permuted_indices_matrix = np.zeros((n_permutations, data.shape[0]), dtype=int)
 
         permutation_generator = yield_permuted_stats(
             data,
@@ -411,9 +411,11 @@ def permutation_analysis(
 
         for i in tqdm(range(n_permutations), desc=f"Permuting {label}", leave=False):
 
-            permuted_stats = np.ravel(next(permutation_generator))
+            permuted_stats, permuted_indices = next(permutation_generator)
+            permuted_stats = np.ravel(permuted_stats)
+            permuted_indices_matrix[i, :] = permuted_indices
 
-            permute_fn_wrapper(permuted_stats, i, current_idx, two_tailed)
+            permute_fn_wrapper(permuted_stats, i, current_idx, two_tailed, permuted_indices=permuted_indices)
 
             if two_tailed:
                 abs_perm_stats = np.abs(permuted_stats)
@@ -460,6 +462,7 @@ def permutation_analysis(
         results[f"stat_uncp_{label}"] = unc_p
         results[f"stat_fdrp_{label}"] = fdr_p
         results[f"stat_fwep_{label}"] = fwe_p
+        results[f"permuted_indices_{label}"] = permuted_indices_matrix
         save_fn_wrapper(results)
 
     if correct_across_contrasts:
@@ -621,7 +624,7 @@ def permutation_analysis_nifti(
         If provided, called as `save_fn(results, key)` whenever a result is added.
     permute_fn : callable or None
         If provided, called each permutation as  
-        `permute_fn(permuted_stats, perm_index, contrast_index, is_two_tailed)`.
+        `permute_fn(permuted_stats, perm_index, contrast_index, is_two_tailed, *args, **kwargs)`.
     save_permutations : bool, default False
         If True, retain and return all permuted statistic arrays.
     mask_img : str or Niimg-like or None
@@ -1095,7 +1098,7 @@ def yield_permuted_stats(
         else:
             stat, df1, df2 = stat_function(permuted_data, full_design, C_eff)
 
-        yield stat
+        yield stat, perm_indices
 
 
 @jit

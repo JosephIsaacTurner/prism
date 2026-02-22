@@ -1,3 +1,85 @@
+# stats.lr.py
+# joseph added "logistic wald test"
+import jax.numpy as jnp
+from jax import jit, vmap, lax
+from jax.scipy.special import expit
+from jax.scipy.stats import norm
+
+
+@jit
+def logistic_wald_test(Y, X, C, l2_reg=1e-4, max_iter=15, tol=1e-5):
+    """
+    Vectorized Mass-Univariate Logistic Regression (IRLS).
+    s
+    Parameters
+    ----------
+    Y : array (n, p) - Binary response matrix (e.g. streamlines, voxels).
+    X : array (n, k) - Design matrix.
+    C : array (k,)   - Contrast vector.
+    
+    Returns
+    -------
+    z_vals : array (p,) - Z-statistics for the contrast.
+    p_vals : array (p,) - Two-tailed p-values.
+    """
+    n, k = X.shape
+    
+    def _fit_single(y):
+        # Initialize beta with 0 or log-odds
+        # Simple initialization: 0
+        beta = jnp.zeros(k)
+        
+        # Newton-Raphson Loop (IRLS)
+        def body(state):
+            b, i = state
+            mu = expit(X @ b)
+            # Weights + Ridge for stability
+            w = mu * (1 - mu)
+            w = jnp.clip(w, 1e-5, 1.0) 
+            
+            # Hessian (X.T @ W @ X) + Ridge
+            H = X.T @ (X * w[:, None]) + jnp.eye(k) * l2_reg
+            
+            # Gradient: X.T @ (y - mu) - Ridge * beta
+            grad = X.T @ (y - mu) - (l2_reg * b)
+            
+            # Update: b_new = b + H_inv @ grad
+            delta = jnp.linalg.solve(H, grad)
+            return b + delta, i + 1
+
+        def cond(state):
+            b, i = state
+            # Convergence check could be added here, 
+            # but fixed iter is faster for vmap usually.
+            return i < max_iter
+
+        beta_final, _ = lax.while_loop(cond, body, (beta, 0))
+        
+        # Calculate Stats
+        mu = expit(X @ beta_final)
+        w = jnp.clip(mu * (1 - mu), 1e-5, 1.0)
+        
+        # Covariance Matrix = inv(Hessian)
+        H = X.T @ (X * w[:, None]) + jnp.eye(k) * l2_reg
+        cov_beta = jnp.linalg.inv(H)
+        
+        # Contrast Inference
+        effect = C @ beta_final
+        var_effect = C @ cov_beta @ C
+        se = jnp.sqrt(var_effect)
+        
+        z = effect / se
+        return jnp.nan_to_num(z)
+
+    # Vectorize over columns of Y (features/streamlines)
+    z_vals = vmap(_fit_single, in_axes=1)(Y)
+    
+    # P-values (Two-tailed)
+    p_vals = 2 * norm.sf(jnp.abs(z_vals))
+    
+    return z_vals, p_vals, 1
+
+
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
