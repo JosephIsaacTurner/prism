@@ -50,6 +50,7 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Quickstart: quickstart.md
+  - Command Line Interface: cli.md
   - API Reference:
       - Overview: api/index.md
       - Dataset: api/dataset.md

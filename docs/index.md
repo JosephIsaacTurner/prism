@@ -21,7 +21,7 @@ Prism is a Python library for running fast, scalable, and fully nonparametric st
 
 ```python
 import numpy as np
-from prism.datasets.dataset import Dataset
+from prism.datasets import Dataset
 
 Y = np.random.randn(100, 50)        # Brain data (samples x voxels)
 X = np.random.randn(100, 2)         # Design matrix

@@ -1,6 +1,18 @@
 # Installation
 
-To install Prism, clone the repository and install it in editable mode:
+The easiest way to install Prism is via PyPI:
+
+```bash
+pip install prism-neuro
+```
+
+Note: While the package is named `prism-neuro` on PyPI to avoid conflicts, you still `import prism` in your Python code and use the `prism` command in your terminal.
+
+---
+
+## Development Installation
+
+To install Prism from source (e.g., for development), clone the repository and install it in editable mode:
 
 ```bash
 git clone https://github.com/josephisaacturner/prism.git

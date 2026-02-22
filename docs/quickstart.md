@@ -62,7 +62,7 @@ results = permutation_analysis_nifti(
 ### Example 3: With the Dataset Class
 
 ```python
-from prism.datasets.dataset import Dataset
+from prism.datasets import Dataset
 import numpy as np
 
 n_samples, n_features, n_regressors = 100, 50, 2
@@ -88,7 +88,7 @@ results_mem = dataset_mem.permutation_analysis()
 Compare statistical maps across datasets.
 
 ```python
-from prism.datasets.dataset import Dataset
+from prism.datasets import Dataset
 from prism.spatial_similarity import spatial_similarity_permutation_analysis
 import numpy as np
 
