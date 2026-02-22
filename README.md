@@ -12,11 +12,8 @@ Prism is a Python library for running fast, scalable, and fully nonparametric st
 
 ## 📚 Documentation
 
-- [Dataset API](docs/dataset.md)
-- [Permutation Analysis](docs/permutation_analysis.md)
-- [Spatial Similarity](docs/spatial_similarity.md)
-- [Statistical Functions](docs/statistical_functions.md)
-- [Usage Examples](docs/usage_examples.md)
+Full documentation, including API reference and usage guides, is available at:  
+**[https://josephiturner.com/prism/](https://josephiturner.com/prism/)**
 
 For background and motivation, see the [project manuscript](manuscript/manuscript.md).
 
@@ -34,6 +31,16 @@ For background and motivation, see the [project manuscript](manuscript/manuscrip
 ---
 
 ## 🛠️ Installation
+
+Prism is available on PyPI as `prism-neuro`:
+
+```bash
+pip install prism-neuro
+```
+
+Note: While the package is named `prism-neuro` on PyPI, you still use `import prism` in your code.
+
+### Development Installation
 
 ```bash
 git clone https://github.com/josephisaacturner/prism.git
@@ -53,7 +60,7 @@ pip install jax-metal
 
 ```python
 import numpy as np
-from prism.datasets import Dataset
+from prism.datasets.dataset import Dataset
 
 Y = np.random.randn(100, 50)        # Brain data (samples x voxels)
 X = np.random.randn(100, 2)         # Design matrix
@@ -69,8 +76,6 @@ dataset = Dataset(
 
 results = dataset.permutation_analysis()
 ```
-
-More full examples are available in [Usage Examples](docs/usage_examples.md).
 
 ---
 
@@ -98,8 +103,8 @@ prism/
 │   ├── preprocessing.py              # Data loading, masking, preprocessing
 │   ├── tfce.py                       # TFCE implementation
 │   ├── spatial_similarity.py         # Spatial map correlation engine
-│   ├── prism_cli.py                  # Command-line interface (pypalm)
-├── docs/                             # Markdown documentation
+│   ├── prism_cli.py                  # Command-line interface
+├── docs/                             # Markdown documentation (MkDocs)
 ├── notebooks/                        # Example Jupyter notebooks
 ├── tests/                            # Unit tests
 ├── assets/                           # Static images and logos

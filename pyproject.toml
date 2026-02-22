@@ -4,7 +4,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "prism"
+name = "prism-neuro"
 version = "0.1.0"
 description = "PeRmutation Inference for Statistical Mapping"
 readme = "README.md"
@@ -13,6 +13,7 @@ license = { text = "MIT" }
 authors = [
   { name="Joseph Turner", email="josephisaacturner@gmail.com" }
 ]
+keywords = ["neuroimaging", "permutation-test", "GLM", "TFCE", "brain-imaging", "statistics"]
 dependencies = [
   "jax",
   "jaxlib",
@@ -30,8 +31,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/JosephIsaacTurner/pstn"
-Documentation = "https://github.com/JosephIsaacTurner/pstn"
+Homepage = "https://github.com/JosephIsaacTurner/prism"
+Documentation = "https://josephiturner.com/prism/"
+Repository = "https://github.com/JosephIsaacTurner/prism"
 
 [project.optional-dependencies]
 dev = ["pytest"]

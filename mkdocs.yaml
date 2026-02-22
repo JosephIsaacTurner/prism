@@ -1,4 +1,4 @@
-site_name: Prism, A python library for permutation-based statistical inference
+site_name: Prism
 site_description: Documentation for Prism, a python library for permutation-based statistical inference.
 site_url: https://josephiturner.com/prism/
 repo_url: https://github.com/JosephIsaacTurner/prism
