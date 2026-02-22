@@ -1,5 +1,5 @@
 <p align="left">
-    <img src="assets/logov2.svg" alt="prism Logo" width="400">
+    <img src="https://raw.githubusercontent.com/JosephIsaacTurner/prism/main/assets/logov2.svg" alt="prism Logo" width="400">
 </p>
 
 # Prism
