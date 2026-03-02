@@ -24,7 +24,8 @@ def spatial_similarity_permutation_analysis(
     ] = None,
     two_tailed: bool = True,
     compare_func: Optional[Callable] = None,
-    accel_tail=False
+    accel_tail=False,
+    quiet: bool = False,
 ) -> Optional[Bunch]:
     """
     Computes spatial correlations between dataset statistic maps and reference maps.
@@ -39,13 +40,14 @@ def spatial_similarity_permutation_analysis(
         two_tailed: If True, computes two-tailed p-values. Defaults to True.
         compare_func: Optional custom similarity function(vec1, vec2) -> float.
         accel_tail: If True, apply GPD tail acceleration for p-values. Defaults to False.
+        quiet: If True, suppress progress bars and warnings.
 
     Returns:
         Optional[Bunch]: Results containing correlation matrices, p-value matrices, and
             permuted correlation distributions.
     """
     analyzer = _SpatialCorrelationAnalysis(
-        datasets, reference_maps, two_tailed, compare_func, accel_tail
+        datasets, reference_maps, two_tailed, compare_func, accel_tail, quiet
     )
     results = analyzer.run_analysis()
     return results
@@ -73,6 +75,7 @@ class _SpatialCorrelationAnalysis:
         two_tailed: bool,
         comparison_func: Optional[Callable[[np.ndarray, np.ndarray], float]] = None,
         accel_tail: bool = False,
+        quiet: bool = False,
     ):
         """
         Initializes the analysis manager.
@@ -82,12 +85,14 @@ class _SpatialCorrelationAnalysis:
             reference_maps_input: Optional reference map(s) (path, Nifti1Image, or ndarray).
             two_tailed: If True, use two-tailed tests for p-values.
             comparison_func: Optional custom function(vec1, vec2) -> float. Defaults to Pearson correlation.
+            quiet: If True, suppress progress bars and warnings.
         """
         self.datasets_input = datasets_input
         self.reference_maps_input = reference_maps_input
         self.two_tailed = two_tailed
         self.comparison_func = comparison_func
         self.accel_tail = accel_tail
+        self.quiet = quiet
 
         # Internal state
         self.datasets: List["Dataset"] = []
@@ -132,13 +137,15 @@ class _SpatialCorrelationAnalysis:
 
         # 3. Check Trivial Case
         if self.n_datasets == 0 or (self.n_datasets < 2 and self.n_references == 0):
-            warnings.warn("Insufficient inputs for correlation analysis.")
+            if not self.quiet:
+                warnings.warn("Insufficient inputs for correlation analysis.")
             return False
 
         # 4. Load Dataset Data
         for i, ds in enumerate(self.datasets):
             try:
                 # Assumes ds.load_data() is implemented in the Dataset class
+                ds.quiet = self.quiet
                 ds.load_data()
                 ds.select_stat_functions()
                 if ds.data is None:
@@ -156,13 +163,15 @@ class _SpatialCorrelationAnalysis:
 
         # 7. Determine Number of Permutations
         if any(ds.n_permutations <= 0 for ds in self.datasets):
-            warnings.warn("n_permutations <= 0 found. Permutation testing skipped.")
+            if not self.quiet:
+                warnings.warn("n_permutations <= 0 found. Permutation testing skipped.")
             self.n_permutations = 0
         else:
             self.n_permutations = min(ds.n_permutations for ds in self.datasets)
-            print(
-                f"Running analysis with {self.n_permutations} permutations."
-            )  # Keep one informative print
+            if not self.quiet:
+                print(
+                    f"Running analysis with {self.n_permutations} permutations."
+                )  # Keep one informative print
 
         return True
 
@@ -177,9 +186,10 @@ class _SpatialCorrelationAnalysis:
             if first_masker:
                 self.common_masker = first_masker
             else:
-                warnings.warn(
-                    "Multiple NIfTI datasets found, but no common masker identified. Ensure consistency."
-                )
+                if not self.quiet:
+                    warnings.warn(
+                        "Multiple NIfTI datasets found, but no common masker identified. Ensure consistency."
+                    )
         elif len(nifti_datasets) == 1:
             self.common_masker = nifti_datasets[
                 0
@@ -209,22 +219,25 @@ class _SpatialCorrelationAnalysis:
                             not hasattr(self.common_masker, "mask_img_")
                             or self.common_masker.mask_img_ is None
                         ):
-                            warnings.warn(
-                                f"Common masker for ref map {i+1} seems unfit."
-                            )
+                            if not self.quiet:
+                                warnings.warn(
+                                    f"Common masker for ref map {i+1} seems unfit."
+                                )
                         masked_ref = self.common_masker.transform(ref_img)
                         ref_map_data = masked_ref.ravel()
                     else:
-                        warnings.warn(
-                            f"NIfTI ref map {i+1} processed raw (no common masker)."
-                        )
+                        if not self.quiet:
+                            warnings.warn(
+                                f"NIfTI ref map {i+1} processed raw (no common masker)."
+                            )
                         ref_map_data = ref_img.get_fdata().ravel()
                 elif isinstance(loaded_ref, np.ndarray):
                     ref_map_data = loaded_ref.ravel()
                     if self.common_masker:
-                        warnings.warn(
-                            f"NumPy ref map {i+1} used; ensure it matches masked space."
-                        )
+                        if not self.quiet:
+                            warnings.warn(
+                                f"NumPy ref map {i+1} used; ensure it matches masked space."
+                            )
                 else:
                     raise TypeError(
                         f"Unsupported type for ref map {i+1}: {type(loaded_ref)}"
@@ -264,9 +277,10 @@ class _SpatialCorrelationAnalysis:
                     temp_stat_map = stat_function(*stat_args)[0]
                     self.target_feature_shape = temp_stat_map.ravel().shape[0]
                 except Exception as e:
-                    warnings.warn(
-                        f"Could not get shape from dataset 1 stat map: {e}. Trying refs."
-                    )
+                    if not self.quiet:
+                        warnings.warn(
+                            f"Could not get shape from dataset 1 stat map: {e}. Trying refs."
+                        )
 
         # Fallback to first reference map if needed
         if self.target_feature_shape is None and self.final_reference_maps:
@@ -410,15 +424,17 @@ class _SpatialCorrelationAnalysis:
                 if full_corr.shape == (n_items1 + n_items2, n_items1 + n_items2):
                     return full_corr[:n_items1, n_items1:]
                 else:  # Handle unexpected scalar or shape mismatch
-                    warnings.warn(
-                        f"Unexpected corrcoef shape {full_corr.shape}. Returning NaNs."
-                    )
+                    if not self.quiet:
+                        warnings.warn(
+                            f"Unexpected corrcoef shape {full_corr.shape}. Returning NaNs."
+                        )
                     return np.full((n_items1, n_items2), np.nan)
 
     def calculate_true_correlations(self):
         """Calculates the true correlation/similarity matrices."""
         if not self.true_stats_list:
-            warnings.warn("No true stats calculated, cannot compute correlations.")
+            if not self.quiet:
+                warnings.warn("No true stats calculated, cannot compute correlations.")
             return
         try:
             stacked_ds_stats = np.stack(self.true_stats_list, axis=-1)
@@ -485,7 +501,8 @@ class _SpatialCorrelationAnalysis:
                 contrast = dataset.contrast[0, :] if dataset.contrast.ndim > 1 else dataset.contrast
 
             if dataset.demean:
-                print(f"Demeaning dataset data and design matrix for dataset {i+1}.")
+                if not self.quiet:
+                    print(f"Demeaning dataset data and design matrix for dataset {i+1}.")
                 dataset.data, dataset.design, contrast, _ = demean_glm_data(
                     dataset.data, dataset.design, contrast
                 )
@@ -522,7 +539,7 @@ class _SpatialCorrelationAnalysis:
         # Permutation loop with progress bar
         permuted_stats_current = np.zeros((self.target_feature_shape, self.n_datasets))
         for perm_idx in tqdm(
-            range(self.n_permutations), desc="Permutations", unit="perm", leave=False
+            range(self.n_permutations), desc="Permutations", unit="perm", leave=False, disable=self.quiet
         ):
             # Get stats for current permutation
             for i, dataset in enumerate(self.datasets):
@@ -570,7 +587,7 @@ class _SpatialCorrelationAnalysis:
                     obs = true_values[x, y]
                     null_dist = permuted_values[:, x, y]
                     p_values_i = compute_p_values_accel_tail(
-                        np.atleast_1d(obs), np.ravel(null_dist), self.two_tailed
+                        np.atleast_1d(obs), np.ravel(null_dist), self.two_tailed, quiet=self.quiet
                     )
                     p_values[x, y] = p_values_i
                     p_values[y, x] = p_values_i
@@ -581,7 +598,7 @@ class _SpatialCorrelationAnalysis:
                         obs = true_values[i, j]
                         null_dist = permuted_values[:, i, j]
                         p_values[i, j] = compute_p_values_accel_tail(
-                            np.atleast_1d(obs), np.ravel(null_dist), self.two_tailed
+                            np.atleast_1d(obs), np.ravel(null_dist), self.two_tailed, quiet=self.quiet
                         )                
         else:
             if self.two_tailed:
@@ -647,5 +664,6 @@ class _SpatialCorrelationAnalysis:
             np.fill_diagonal(p_matrix_ds_ds, np.nan)
             results["p_matrix_ds_ds"] = p_matrix_ds_ds
 
-        print("Analysis finished.")
+        if not self.quiet:
+            print("Analysis finished.")
         return results

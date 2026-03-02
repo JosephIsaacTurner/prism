@@ -6,7 +6,7 @@
 
 **Fast, modular, and extensible permutation-based statistical inference for neuroimaging.**
 
-Prism is a Python library for running fast, scalable, and fully nonparametric statistical analyses on brain imaging data. It replicates much of the core functionality of Anderson Winkler's [PALM](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/PALM), but without MATLAB dependencies.
+Prism is a Python library for running fast, scalable, and fully nonparametric statistical analyses on brain imaging data. It replicates much of the core functionality of Anderson Winkler's [PALM](https://fsl.fmrib.ox.ac.uk/fsl/docs/statistics/palm/user_guide.html), but without MATLAB dependencies.
 
 ---
 

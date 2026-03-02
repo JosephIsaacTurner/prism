@@ -43,7 +43,9 @@ def permutation_analysis(
     save_fn=None,
     permute_fn=None,
     save_permutations=False,
+    return_permutations=False,
     mask_img=None,
+    quiet=False,
 ):
     """
     Perform permutation-based inference on a general linear model.
@@ -80,11 +82,19 @@ def permutation_analysis(
         save_fn (callable, optional): Callback called when a result is saved.
         permute_fn (callable, optional): Callback called for each permutation.
         save_permutations (bool): Whether to save all permuted statistic maps. Defaults to False.
+        return_permutations (bool): Whether to return all permuted statistic maps in the results. Defaults to False.
         mask_img (Niimg-like, optional): Mask to apply to data before analysis.
+        quiet (bool): If True, suppress progress bars and warnings.
 
     Returns:
         sklearn.utils.Bunch: Results containing observed stats, p-values, and max-stat distributions.
     """
+    if quiet:
+        # Silence the custom UserWarning
+        warnings.filterwarnings("ignore", message="Mask provided but data is not NIfTI")
+        # Silence the NumPy matmul RuntimeWarnings
+        np.seterr(divide='ignore', over='ignore', invalid='ignore')
+
     # Step Zero: Check inputs and setup
     if n_permutations <= 0:
         raise ValueError("Number of permutations must be positive")
@@ -116,9 +126,10 @@ def permutation_analysis(
     if f_contrast_indices is not None:
         f_contrast_indices = np.ravel(f_contrast_indices).astype(bool).astype(int)
     if f_only and f_contrast_indices is None and contrast.ndim == 1:
-        warnings.warn(
-            "f_only is True, but f_contrast_indices is None and only one base contrast is provided. Performing F-test on this single contrast."
-        )
+        if not quiet:
+            warnings.warn(
+                "f_only is True, but f_contrast_indices is None and only one base contrast is provided. Performing F-test on this single contrast."
+            )
         # Treat the single contrast as the one to test with F
         f_contrast_indices = np.array([0])
     elif (
@@ -127,9 +138,10 @@ def permutation_analysis(
         and contrast.ndim == 2
         and contrast.shape[0] == 1
     ):
-        warnings.warn(
-            "f_only is True, but f_contrast_indices is None and only one base contrast is provided. Performing F-test on this single contrast."
-        )
+        if not quiet:
+            warnings.warn(
+                "f_only is True, but f_contrast_indices is None and only one base contrast is provided. Performing F-test on this single contrast."
+            )
         f_contrast_indices = np.array([0])
     elif (
         f_only
@@ -137,9 +149,10 @@ def permutation_analysis(
         and contrast.ndim == 2
         and contrast.shape[0] > 1
     ):
-        warnings.warn(
-            "f_only is True, but f_contrast_indices is None. Performing F-test on *all* provided contrasts."
-        )
+        if not quiet:
+            warnings.warn(
+                "f_only is True, but f_contrast_indices is None. Performing F-test on *all* provided contrasts."
+            )
         # Use all contrasts for the F-test
         f_contrast_indices = np.arange(contrast.shape[0])
     elif f_only and f_contrast_indices is not None:
@@ -150,9 +163,10 @@ def permutation_analysis(
         and contrast.ndim == 2
         and contrast.shape[0] > 1
     ):
-        warnings.warn(
-            "Multiple contrasts provided, but f_contrast_indices is None. No F-test will be performed."
-        )
+        if not quiet:
+            warnings.warn(
+                "Multiple contrasts provided, but f_contrast_indices is None. No F-test will be performed."
+            )
         # No F-test by default if multiple contrasts and no indices
 
     if demean:
@@ -201,9 +215,10 @@ def permutation_analysis(
                 "Cannot perform F-test: f_contrast_indices resulted in an empty set of contrasts."
             )
         if f_contrast.shape[0] == 1 and not f_only:
-            warnings.warn(
-                "F-test requested for a single contrast vector. This is equivalent to a squared t-test (or similar for other stats)."
-            )
+            if not quiet:
+                warnings.warn(
+                    "F-test requested for a single contrast vector. This is equivalent to a squared t-test (or similar for other stats)."
+                )
 
     # Assemble contrasts for output
     contrasts = Bunch()
@@ -234,9 +249,10 @@ def permutation_analysis(
             )
         n_groups = len(np.unique(calculated_variance_groups))
         if n_groups <= 1:
-            warnings.warn(
-                "Variance groups were requested or auto-detected, but only one group was found. Standard statistics will be used."
-            )
+            if not quiet:
+                warnings.warn(
+                    "Variance groups were requested or auto-detected, but only one group was found. Standard statistics will be used."
+                )
             use_variance_groups = False  # Revert to standard stats
             calculated_variance_groups = None
             n_groups = None
@@ -270,7 +286,8 @@ def permutation_analysis(
             if save_fn is not None:
                 save_fn(results)
         except Exception as e:
-            print(f"Error saving results: {e}")
+            if not quiet:
+                print(f"Error saving results: {e}")
 
     def permute_fn_wrapper(permuted_stats, perm_idx, contrast_idx, two_tailed, *args, **kwargs):
         """Function to handle permutation results."""
@@ -327,9 +344,10 @@ def permutation_analysis(
     # Do permutation testing
     for label, contrast in contrasts.items():
         current_idx = contrast_labels.index(label)
-        print(
-            f"--- Processing Contrast {label} ({current_idx + 1}/{len(contrast_labels)}) ---"
-        )
+        if not quiet:
+            print(
+                f"--- Processing Contrast {label} ({current_idx + 1}/{len(contrast_labels)}) ---"
+            )
 
         stat_function_ = (
             actual_stat_function if label != "f" else actual_f_stat_function
@@ -341,6 +359,8 @@ def permutation_analysis(
         exceedances = np.zeros_like(observed_stats, dtype=float)
         max_stat_dist = np.zeros(n_permutations)
         permuted_indices_matrix = np.zeros((n_permutations, data.shape[0]), dtype=int)
+        if return_permutations:
+            permuted_stats_matrix = np.zeros((n_permutations, n_elements), dtype=float)
 
         permutation_generator = yield_permuted_stats(
             data,
@@ -358,11 +378,13 @@ def permutation_analysis(
         )
 
 
-        for i in tqdm(range(n_permutations), desc=f"Permuting {label}", leave=False):
+        for i in tqdm(range(n_permutations), desc=f"Permuting {label}", leave=False, disable=quiet):
 
             permuted_stats, permuted_indices = next(permutation_generator)
             permuted_stats = np.ravel(permuted_stats)
             permuted_indices_matrix[i, :] = permuted_indices
+            if return_permutations:
+                permuted_stats_matrix[i, :] = permuted_stats
 
             permute_fn_wrapper(permuted_stats, i, current_idx, two_tailed, permuted_indices=permuted_indices)
 
@@ -380,14 +402,14 @@ def permutation_analysis(
 
         # Step Three: Calculate uncorrected p-values
         unc_p = (exceedances + 1.0) / (n_permutations + 1.0)
-        # Step Four: Correct using FDR (Benjamini-Hochberg)
+        # Step Four: Calculate corrected using FDR (Benjamini-Hochberg)
         _, fdr_p = fdrcorrection(np.where(unc_p == 1.0 / (n_permutations + 1.0), 0, unc_p), alpha=0.05, method="indep", is_sorted=False)
         # Step Five: Correct using FWE (max-stat i.e. Westfall-Young)
         if accel_tail:
             # Use a generalized Pareto distribution to estimate p-values for the tail.
             # Pass the distribution of maximum statistics collected during permutations.
             fwe_p = compute_p_values_accel_tail(
-                observed_stats, max_stat_dist, two_tailed=two_tailed
+                observed_stats, max_stat_dist, two_tailed=two_tailed, quiet=quiet
             )
         else:
             # Calculate directly from the empirical distribution of max statistics
@@ -412,6 +434,8 @@ def permutation_analysis(
         results[f"stat_fdrp_{label}"] = fdr_p
         results[f"stat_fwep_{label}"] = fwe_p
         results[f"permuted_indices_{label}"] = permuted_indices_matrix
+        if return_permutations:
+            results[f"permuted_stats_{label}"] = permuted_stats_matrix
         save_fn_wrapper(results)
 
     if correct_across_contrasts:
@@ -446,7 +470,7 @@ def permutation_analysis(
             observed_values = results[f"stat_{contrast_label}"]
             if accel_tail:
                 cfwe_p = compute_p_values_accel_tail(
-                    observed_values, global_max_stat_dist, two_tailed=two_tailed
+                    observed_values, global_max_stat_dist, two_tailed=two_tailed, quiet=quiet
                 )
             else:
                 if two_tailed:
@@ -513,8 +537,10 @@ def permutation_analysis_nifti(
     save_fn=None,
     permute_fn=None,
     save_permutations=False,
+    return_permutations=False,
     mask_img=None,
     tfce=False,
+    quiet=False,
 ):
     """
     Perform dense volumetric permutation analysis on NIfTI images.
@@ -546,17 +572,20 @@ def permutation_analysis_nifti(
         save_fn (callable, optional): Callback called when a result is saved.
         permute_fn (callable, optional): Callback called for each permutation.
         save_permutations (bool): Whether to save all permuted statistic maps. Defaults to False.
+        return_permutations (bool): Whether to return all permuted statistic maps in the results. Defaults to False.
         mask_img (str or Niimg-like, optional): Mask to apply to images before analysis.
         tfce (bool): If True, apply Threshold-Free Cluster Enhancement. Defaults to False.
+        quiet (bool): If True, suppress progress bars and warnings.
 
     Returns:
         sklearn.utils.Bunch: Results including observed stats, p-values, and TFCE results if enabled.
     """
     # Step One: Load volumetric images into a 2d matrix (n_samples x n_voxels)
     if mask_img is None:
-        print(
-            "Warning: No mask image provided. Using the whole image. Unexpected results may occur."
-        )
+        if not quiet:
+            print(
+                "Warning: No mask image provided. Using the whole image. Unexpected results may occur."
+            )
         masker = NiftiMasker()
     else:
         masker = NiftiMasker(mask_img=mask_img).fit()
@@ -579,6 +608,8 @@ def permutation_analysis_nifti(
             save_neglog10p=save_neglog10p,
             correct_across_contrasts=correct_across_contrasts,
             mask_img=load_nifti_if_not_already_nifti(mask_img),
+            return_permutations=return_permutations,
+            quiet=quiet,
         )
         tfce_result_saver = ResultSaver(
             output_prefix=output_prefix,
@@ -618,9 +649,10 @@ def permutation_analysis_nifti(
                 try:
                     tfce_manager.process_observed_stats(value, contrast_idx)
                 except Exception as e:
-                    print(
-                        f"Error processing TFCE for {key!r}: {type(e).__name__}: {e.args}"
-                    )
+                    if not quiet:
+                        print(
+                            f"Error processing TFCE for {key!r}: {type(e).__name__}: {e.args}"
+                        )
 
         # Handle the actual saving of results
         if save_fn is not None:
@@ -669,7 +701,9 @@ def permutation_analysis_nifti(
         save_fn=save_fn_wrapper,
         permute_fn=permute_fn_wrapper,
         save_permutations=save_permutations,
+        return_permutations=return_permutations,
         mask_img=mask_img,
+        quiet=quiet,
     )
 
     if tfce:
@@ -694,6 +728,8 @@ class TfceStatsManager:
         save_neglog10p=False,
         correct_across_contrasts=False,
         mask_img=None,
+        return_permutations=False,
+        quiet=False,
     ):
         self.f_contrast_indices = f_contrast_indices
         self.two_tailed = two_tailed
@@ -704,6 +740,8 @@ class TfceStatsManager:
         self.save_1minusp = save_1minusp
         self.save_neglog10p = save_neglog10p
         self.correct_across_contrasts = correct_across_contrasts
+        self.return_permutations = return_permutations
+        self.quiet = quiet
 
         self.mask_img = mask_img
         self.masker = NiftiMasker(mask_img).fit() if mask_img is not None else None
@@ -739,6 +777,208 @@ class TfceStatsManager:
             self.masker.inverse_transform(permuted_stats), two_tailed=self.two_tailed
         ).get_fdata()
         permuted_stats_tfce = permuted_stats_tfce[self.mask_img.get_fdata() != 0]
+
+        if self.return_permutations:
+            perm_key = f"tfce_permuted_stats_{contrast_label}"
+            if perm_key not in self.results:
+                self.results[perm_key] = np.zeros(
+                    (self.n_permutations, permuted_stats_tfce.size), dtype=float
+                )
+            self.results[perm_key][permutation_idx, :] = permuted_stats_tfce
+
+        # On the first iteration, initialize state arrays/scalars
+        if permutation_idx == 0:
+            self.exceedances_tfce[f"tfce_stat_{contrast_label}"] = np.zeros_like(
+                permuted_stats_tfce
+            )
+            if self.two_tailed:
+                self.exceedances_tfce[f"tfce_stat_{contrast_label}"] += np.abs(
+                    permuted_stats_tfce
+                ) >= np.abs(self.observed_stats_tfce[f"tfce_stat_{contrast_label}"])
+                self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"] = np.max(
+                    np.abs(permuted_stats_tfce)
+                )
+            else:
+                self.exceedances_tfce[f"tfce_stat_{contrast_label}"] += (
+                    permuted_stats_tfce
+                    >= self.observed_stats_tfce[f"tfce_stat_{contrast_label}"]
+                )
+                self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"] = np.max(
+                    permuted_stats_tfce
+                )
+
+        # If not the first iteration, update the exceedances and max stat distribution
+        else:
+            if self.two_tailed:
+                # Update exceedances: count where abs(permuted) >= abs(true)
+                self.exceedances_tfce[f"tfce_stat_{contrast_label}"] += np.abs(
+                    permuted_stats_tfce
+                ) >= np.abs(self.observed_stats_tfce[f"tfce_stat_{contrast_label}"])
+                # Concatenate the new max value using pd.concat equivalent (if arrays) or np.hstack
+                self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"] = np.hstack(
+                    [
+                        np.max(np.abs(permuted_stats_tfce)),
+                        self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"],
+                    ]
+                )
+            else:
+                # Update exceedances: count where permuted >= true
+                self.exceedances_tfce[f"tfce_stat_{contrast_label}"] += (
+                    permuted_stats_tfce
+                    >= self.observed_stats_tfce[f"tfce_stat_{contrast_label}"]
+                )
+                # Concatenate the new max value using pd.concat equivalent (if arrays) or np.hstack
+                self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"] = np.hstack(
+                    [
+                        np.max(permuted_stats_tfce),
+                        self.max_stat_dist_tfce[f"tfce_stat_{contrast_label}"],
+                    ]
+                )
+
+    def finalize(self):
+        # Determine all valid contrast labels (c1…cN and f if present)
+        contrast_labels = [f"c{i+1}" for i in range(self.n_t_contrasts)]
+        if "tfce_stat_f" in self.observed_stats_tfce:
+            contrast_labels.append("f")
+        valid_labels = [
+            lbl
+            for lbl in contrast_labels
+            if f"tfce_stat_{lbl}" in self.exceedances_tfce
+        ]
+
+        # Per‐contrast p-value processing
+        for lbl in valid_labels:
+            key = f"tfce_stat_{lbl}"
+            stat = self.observed_stats_tfce[key]
+            max_dist = self.max_stat_dist_tfce[key]
+            exc = self.exceedances_tfce[key]
+
+            # 1. Uncorrected
+            uncp = (exc + 1) / (self.n_permutations + 1)
+            # 2. FDR
+            _, fdrp = fdrcorrection(np.where(uncp == 1.0 / (self.n_permutations +1), 0, uncp), alpha=0.05, method="indep", is_sorted=False)
+            # 3. FWE
+            if self.accel_tail:
+                fwep = compute_p_values_accel_tail(
+                    stat, max_dist, two_tailed=self.two_tailed, quiet=self.quiet
+                )
+            else:
+                cmp_arr = np.abs(stat) if self.two_tailed else stat
+                # broadcast to (n_samples, n_permutations)
+                cmp_arr = cmp_arr[:, None]
+                fwep = (np.sum(max_dist[None, :] >= cmp_arr, axis=1) + 1) / (
+                    self.n_permutations + 1
+                )
+
+            # Store max‐stat distribution
+            self.results[f"tfce_max_stat_dist_{lbl}"] = max_dist
+
+            # Apply any 1-minus-p or –log10 transforms
+            uncp, fdrp, fwep = process_p_values(
+                (uncp, fdrp, fwep), self.save_1minusp, self.save_neglog10p
+            )
+            self.results[f"tfce_stat_uncp_{lbl}"] = uncp
+            self.results[f"tfce_stat_fdrp_{lbl}"] = fdrp
+            self.results[f"tfce_stat_fwep_{lbl}"] = fwep
+            self.results[f"tfce_max_stat_dist_{lbl}"] = max_dist
+
+        # Global correction across contrasts (if requested)
+        if self.correct_across_contrasts:
+            # Recover raw uncp matrix
+            uncp_matrix = np.vstack(
+                [self.results[f"tfce_stat_uncp_{lbl}"] for lbl in valid_labels]
+            )
+            flat_uncp = uncp_matrix.ravel()
+            flat_uncp = np.array(
+                reverse_process_p_values(
+                    flat_uncp, self.save_1minusp, self.save_neglog10p
+                )
+            )
+            _, flat_fdr = fdrcorrection(
+                np.where(flat_uncp==1.0/(self.n_permutations + 1), 0, flat_uncp), alpha=0.05, method="indep", is_sorted=False
+            )
+            fdr_matrix = flat_fdr.reshape(uncp_matrix.shape)
+
+            # Build global max‐stat distribution
+            dist_stack = [
+                self.max_stat_dist_tfce[f"tfce_stat_{lbl}"] for lbl in valid_labels
+            ]
+            stack = np.stack(dist_stack, axis=0)
+            if self.two_tailed:
+                global_max = np.max(np.abs(stack), axis=0)
+            else:
+                global_max = np.max(stack, axis=0)
+
+            # Compute and store per‐contrast cfdrp & cfwep
+            for idx, lbl in enumerate(valid_labels):
+                key = f"tfce_stat_{lbl}"
+                stat = self.observed_stats_tfce[key]
+
+                # cfdrp from FDR matrix
+                cfdrp = fdr_matrix[idx]
+
+                # cfwep
+                if self.accel_tail:
+                    cfwep = compute_p_values_accel_tail(
+                        stat, global_max, two_tailed=self.two_tailed, quiet=self.quiet
+                    )
+                else:
+                    cmp_arr = np.abs(stat) if self.two_tailed else stat
+                    cmp_arr = cmp_arr[:, None]
+                    if self.two_tailed:
+                        cfwep = (
+                            np.sum(global_max[None, :] >= np.abs(cmp_arr), axis=1) + 1
+                        ) / (self.n_permutations + 1)
+                    else:
+                        cfwep = (np.sum(global_max[None, :] >= cmp_arr, axis=1) + 1) / (
+                            self.n_permutations + 1
+                        )
+
+                cfwep, cfdrp = process_p_values(
+                    (cfwep, cfdrp), self.save_1minusp, self.save_neglog10p
+                )
+                self.results[f"tfce_stat_cfwep_{lbl}"] = cfwep
+                self.results[f"tfce_stat_cfdrp_{lbl}"] = cfdrp
+
+            # Keep the global distribution for later inspection
+            self.results["tfce_global_max_stat_dist"] = global_max
+
+        return self.results
+
+    def process_observed_stats(self, observed_stats, contrast_idx):
+        if contrast_idx is None or contrast_idx == -1:
+            contrast_label = "f"
+        else:
+            contrast_label = f"c{contrast_idx + 1}"
+
+        # Compute the TFCE-transformed statistics
+        observed_stats_tfce = apply_tfce(
+            self.masker.inverse_transform(observed_stats), two_tailed=self.two_tailed
+        ).get_fdata()
+        observed_stats_tfce = observed_stats_tfce[self.mask_img.get_fdata() != 0]
+        self.results[f"tfce_stat_{contrast_label}"] = observed_stats_tfce
+        self.observed_stats_tfce[f"tfce_stat_{contrast_label}"] = observed_stats_tfce
+
+    def update(self, permuted_stats, permutation_idx, contrast_idx=None):
+        # Determine the contrast label
+        if contrast_idx is None or contrast_idx == -1:
+            contrast_label = "f"
+        else:
+            contrast_label = f"c{contrast_idx + 1}"
+
+        # Transform the permuted stats with TFCE
+        permuted_stats_tfce = apply_tfce(
+            self.masker.inverse_transform(permuted_stats), two_tailed=self.two_tailed
+        ).get_fdata()
+        permuted_stats_tfce = permuted_stats_tfce[self.mask_img.get_fdata() != 0]
+
+        if self.return_permutations:
+            perm_key = f"tfce_permuted_stats_{contrast_label}"
+            if perm_key not in self.results:
+                self.results[perm_key] = np.zeros(
+                    (self.n_permutations, permuted_stats_tfce.size), dtype=float
+                )
+            self.results[perm_key][permutation_idx, :] = permuted_stats_tfce
 
         # On the first iteration, initialize state arrays/scalars
         if permutation_idx == 0:
@@ -1102,6 +1342,7 @@ def compute_p_values_accel_tail(
     start_quantile=0.75,
     method="MOM",
     n_mc_samples=5000,
+    quiet=False,
 ):
     """
     Convert observed statistics to p-values via permutations + optional GPD tail.
@@ -1125,13 +1366,16 @@ def compute_p_values_accel_tail(
         'MLE'  – Maximum-likelihood fit via SciPy
     n_mc_samples : int, default=5000
         Monte-Carlo samples for the Anderson–Darling goodness-of-fit.
+    quiet : bool, default=False
+        If True, suppress print statements.
 
-    Returns
+    Returns:
     -------
     p_values : ndarray, shape (n,)
         Estimated p-values for each observed statistic.
     """
-    print("Using accelerated tail method for p-value computation.", flush=True)
+    if not quiet:
+        print("Using accelerated tail method for p-value computation.", flush=True)
     obs = np.asarray(obs)
     null_dist = np.asarray(null_dist)
     if two_tailed:
@@ -1181,7 +1425,8 @@ def compute_p_values_accel_tail(
             )
             if gof.pvalue <= 0.05:
                 continue
-            print("Found good GPD fit.", flush=True)
+            if not quiet:
+                print("Found good GPD fit.", flush=True)
 
             # 4) Refine tail p-values
             tail_prob = np.mean(null_dist >= threshold)
@@ -1196,7 +1441,8 @@ def compute_p_values_accel_tail(
                 empirical_p[mask] = np.minimum(
                     empirical_p[mask], np.maximum(emp_tail_p, np.finfo(float).tiny)
                 )
-            print("Succesfully refined tail p-values.", flush=True)
+            if not quiet:
+                print("Succesfully refined tail p-values.", flush=True)
 
             break
 

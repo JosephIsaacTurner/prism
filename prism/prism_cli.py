@@ -23,7 +23,6 @@ NON_IMPLEMENTED_ARGS = [
     "-corrmod",
     "-concordant",
     "-reversemasks",
-    "-quiet",
     "-advanced",
     "-con",
     "-tonly",
@@ -232,6 +231,13 @@ def setup_parser():
         default=False,
         help="Save z-statistics instead of t-statistics",
     )
+    parser.add_argument(
+        "-quiet",
+        "--quiet",
+        action="store_true",
+        default=False,
+        help="Suppress progress bars and warnings",
+    )
 
     for arg in NON_IMPLEMENTED_ARGS:
         parser.add_argument(
@@ -390,13 +396,14 @@ def main():
         )
 
     # Print parsed arguments for testing
-    print("PRISM - PeRmutation Inference for Statistical Mapping")
-    print("=============================================")
-    print(f"Input file: {args.input}")
-    print(f"Design matrix: {args.design}")
-    print(f"Contrast: {args.contrast}")
-    print(f"Number of permutations: {args.n_permutations}")
-    print(f"Output prefix: {args.output}")
+    if not args.quiet:
+        print("PRISM - PeRmutation Inference for Statistical Mapping")
+        print("=============================================")
+        print(f"Input file: {args.input}")
+        print(f"Design matrix: {args.design}")
+        print(f"Contrast: {args.contrast}")
+        print(f"Number of permutations: {args.n_permutations}")
+        print(f"Output prefix: {args.output}")
 
 
     output_prefix = get_output_path(args.output)
@@ -430,13 +437,15 @@ def main():
         zstat=args.zstat,
         save_permutations=args.save_permutations,
         mask_img=args.mask,
-        tfce=args.tfce
+        tfce=args.tfce,
+        quiet=args.quiet
     )
     dataset.save_config()
 
     results = dataset.permutation_analysis()
 
-    print("Analysis complete. Results saved to output files.")
+    if not args.quiet:
+        print("Analysis complete. Results saved to output files.")
 
     # # --- Commenting out on Apr. 30th, 2025, as we intent all processing to be handled in the Dataset class.
     # # Continue with the actual processing...

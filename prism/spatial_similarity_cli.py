@@ -21,6 +21,8 @@ def parse_args():
                         help='Use two-tailed test.')
     parser.add_argument('--accel-tail', action='store_true',
                         help='Use accelerated tail approximation.')
+    parser.add_argument('--quiet', action='store_true',
+                        help='Suppress progress bars and warnings.')
     return parser.parse_args()
 
 
@@ -31,19 +33,21 @@ def main():
     # Load datasets from config files
     datasets = []
     for cfg_path in args.dataset_configs:
-        ds = Dataset(config_path=cfg_path)
+        ds = Dataset(config_path=cfg_path, quiet=args.quiet)
         ds.n_permutations = args.n_permutations
         ds.mask_img = args.mask_img if args.mask_img else None
         datasets.append(ds)
 
-    pretty_print_all_datasets(datasets)
+    if not args.quiet:
+        pretty_print_all_datasets(datasets)
 
     # Run spatial similarity analysis
     results = spatial_similarity_permutation_analysis(
         datasets=datasets,
         reference_maps=args.reference_maps,
         two_tailed=args.two_tailed,
-        accel_tail=args.accel_tail
+        accel_tail=args.accel_tail,
+        quiet=args.quiet
     )
 
     # Prepare names for saving

@@ -2,7 +2,7 @@
 
 Prism provides a powerful command-line interface designed to be a **drop-in replacement for FSL's PALM**. Most of the core arguments and flags match PALM's syntax, allowing you to easily port existing workflows to Prism.
 
-For a more descriptive guide on many of these parameters, we recommend referring to the official [FSL PALM Documentation](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/PALM).
+For a more descriptive guide on many of these parameters, we recommend referring to the official [FSL PALM Documentation](https://fsl.fmrib.ox.ac.uk/fsl/docs/statistics/palm/user_guide.html).
 
 ---
 

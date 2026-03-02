@@ -53,8 +53,10 @@ class Dataset:
         save_fn: Optional[Callable] = None,
         permute_fn: Optional[Callable] = None,
         save_permutations: bool = False,
+        return_permutations: bool = False,
         mask_img: Optional[Union[str, nib.Nifti1Image]] = None,
         tfce: bool = False,
+        quiet: bool = False,
     ):
         """
         Initializes the Dataset object with the provided parameters.
@@ -87,8 +89,10 @@ class Dataset:
             save_fn: Callback function called when a result is saved.
             permute_fn: Callback function called for each permutation.
             save_permutations: Whether to save all permuted statistic maps.
+            return_permutations: Whether to return all permuted statistic maps in the results.
             mask_img: Mask image for NIfTI data.
             tfce: Whether to apply Threshold-Free Cluster Enhancement.
+            quiet: If True, suppress progress bars and warnings.
 
         Raises:
             ValueError: If neither config_path nor data/design/contrast are provided.
@@ -98,7 +102,7 @@ class Dataset:
                 "Either config_path or data, design, and contrast must be provided."
             )
         if config_path is not None:
-            data, design, contrast, output_prefix, f_contrast_indices, two_tailed, exchangeability_matrix, vg_auto, variance_groups, within, whole, flip_signs, stat_function, f_stat_function, f_only, n_permutations, accel_tail, save_1minusp, save_neglog10p, correct_across_contrasts, random_state, demean, zstat, save_fn, permute_fn, save_permutations, mask_img, tfce = self.parse_config(config_path)
+            data, design, contrast, output_prefix, f_contrast_indices, two_tailed, exchangeability_matrix, vg_auto, variance_groups, within, whole, flip_signs, stat_function, f_stat_function, f_only, n_permutations, accel_tail, save_1minusp, save_neglog10p, correct_across_contrasts, random_state, demean, zstat, save_fn, permute_fn, save_permutations, return_permutations, mask_img, tfce, quiet = self.parse_config(config_path)
         
         # ─── Store raw inputs ───────────────────────────────────────────
         self._data_input = data
@@ -127,8 +131,10 @@ class Dataset:
         self._save_fn_input = save_fn
         self._permute_fn_input = permute_fn
         self._save_permutations_input = save_permutations
+        self._return_permutations_input = return_permutations
         self._mask_img_input = mask_img
         self._tfce_input = tfce
+        self._quiet_input = quiet
 
         # ─── Core analysis parameters ──────────────────────────────────
         self.stat_function = stat_function
@@ -139,6 +145,7 @@ class Dataset:
         self.accel_tail = accel_tail
         self.demean = demean
         self.zstat = zstat
+        self.quiet = quiet
 
         # ensure reproducible RNG
         if random_state is None or isinstance(random_state, np.random.RandomState):
@@ -172,6 +179,7 @@ class Dataset:
         self.save_neglog10p = save_neglog10p
         self.correct_across_contrasts = correct_across_contrasts
         self.save_permutations = save_permutations
+        self.return_permutations = return_permutations
         self.save_fn = save_fn
         self.permute_fn = permute_fn
         self.output_prefix = output_prefix
@@ -198,9 +206,10 @@ class Dataset:
             elif self.mask_img is not None:
                 self.masker = NiftiMasker(mask_img=self.mask_img)
             else:
-                warnings.warn(
-                    "NIfTI data provided without mask; using NiftiMasker for auto-masking."
-                )
+                if not self.quiet:
+                    warnings.warn(
+                        "NIfTI data provided without mask; using NiftiMasker for auto-masking."
+                    )
                 self.masker = NiftiMasker()  # Default strategy
             # Fit masker (if needed) and transform data
             self.data = self.masker.fit_transform(loaded_data)
@@ -223,7 +232,9 @@ class Dataset:
             self.masker = None
             self.mask_img = None
             if self._mask_img_input:
-                warnings.warn("Mask ignored for non-NIfTI data.")
+                if not self.quiet:
+                    warnings.warn("Mask provided but data is not NIfTI; Interesting choice. Behavior might be unexpected.")
+                self.mask_img = load_nifti_if_not_already_nifti(self._mask_img_input)
             # Ensure data is 2D (samples x features)
             if self.data.ndim == 1:
                 self.data = self.data[np.newaxis, :]  # Assume 1 sample
@@ -321,8 +332,10 @@ class Dataset:
             "save_fn": self.save_fn,
             "permute_fn": self.permute_fn,
             "save_permutations": self.save_permutations,
+            "return_permutations": self.return_permutations,
             "mask_img": self.mask_img,
             "tfce": self.tfce,
+            "quiet": self.quiet,
         }
     
 
@@ -401,7 +414,8 @@ class Dataset:
             for label, indices in indices_results.items():
                 save_path = f"{self.output_prefix}_permuted_indices_{label}.csv"
                 np.savetxt(save_path, indices, delimiter=",", fmt='%d')
-                print(f"Saved permuted indices for {label} to {save_path}")
+                if not self.quiet:
+                    print(f"Saved permuted indices for {label} to {save_path}")
 
         return indices_results
     
@@ -439,8 +453,10 @@ class Dataset:
             "save_fn": self._save_fn_input,
             "permute_fn": self._permute_fn_input,
             "save_permutations": self._save_permutations_input,
+            "return_permutations": self._return_permutations_input,
             "mask_img": self.mask_img,
             "tfce": self._tfce_input,
+            "quiet": self._quiet_input,
             "cmd": " ".join(sys.argv),
         }
 
@@ -458,14 +474,16 @@ class Dataset:
                 # Save as CSV without header
                 csv_path = f"{output_prefix}_{key}.csv"
                 np.savetxt(csv_path, value, delimiter=",", header="", comments="")
-                print(f"Saved {key} to {csv_path}")
+                if not self.quiet:
+                    print(f"Saved {key} to {csv_path}")
                 input_params[key] = csv_path  # Update to path for JSON saving
 
         # Save a json at the prefix config.json
         config_path = f"{output_prefix}_config.json"
         with open(config_path, "w") as f:
             json.dump(input_params, f, indent=4)
-        print(f"Configuration saved to {config_path}")
+        if not self.quiet:
+            print(f"Configuration saved to {config_path}")
         return config_path
 
     def parse_config(self, config_path: str):
