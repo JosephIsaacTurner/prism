@@ -1,6 +1,6 @@
 from .datasets import generate_null_data_vector
 import numpy as np
-from tqdm import tqdm
+from .utils import progress_bar
 from nilearn.maskers import NiftiMasker
 from copy import deepcopy
 import nibabel as nib
@@ -30,8 +30,8 @@ def correlate_maps_experimental(map1, map2, mask_img, n_permutations, random_sta
     true_comparison_value = compare(map1_vector, map2_vector)
     
     # Two: Create synthetic null data of 1000 samples each
-    null_data_one = np.vstack([generate_null_data_vector(mask_img) for _ in tqdm(range(1000), desc="Generating null data one")])
-    null_data_two = np.vstack([generate_null_data_vector(mask_img) for _ in tqdm(range(1000), desc="Generating null data two")])
+    null_data_one = np.vstack([generate_null_data_vector(mask_img) for _ in progress_bar(range(1000), desc="Generating null data one")])
+    null_data_two = np.vstack([generate_null_data_vector(mask_img) for _ in progress_bar(range(1000), desc="Generating null data two")])
 
     # Three: Simulate both maps using null data
     simulated_map_one, weights_one = generate_simulated_vector(map1_vector, null_data_one)
@@ -46,7 +46,7 @@ def correlate_maps_experimental(map1, map2, mask_img, n_permutations, random_sta
 
     # Five: Calculate null distribution
     exceedances = 0
-    for i in tqdm(range(n_permutations), desc="Calculating null distribution"):
+    for i in progress_bar(range(n_permutations), desc="Calculating null distribution"):
         permuted_map_one = next(permuted_map_one_generator)
         permuted_map_two = next(permuted_map_two_generator)
         permuted_comparison_value = compare(permuted_map_one, permuted_map_two)
@@ -286,7 +286,7 @@ def reorder_brain_data_hilbert(values, coords, p=10, verbose=True):
     
     # Compute the Hilbert index for each point.
     hilbert_indices = np.empty(n, dtype=np.int64)
-    for i in tqdm(range(n), desc="Computing Hilbert indices") if verbose else range(n):
+    for i in progress_bar(range(n), desc="Computing Hilbert indices") if verbose else range(n):
         point = list(coords_int[i])
         try:
             # Try the primary method name.

@@ -4,7 +4,7 @@ from jax import jit, random, numpy as jnp
 from scipy.stats import genpareto, goodness_of_fit
 from sklearn.utils import Bunch
 from statsmodels.stats.multitest import fdrcorrection
-from tqdm import tqdm
+from .utils import progress_bar
 from nilearn.maskers import NiftiMasker
 from .preprocessing import load_nifti_if_not_already_nifti, ResultSaver
 from .stats import (
@@ -378,7 +378,7 @@ def permutation_analysis(
         )
 
 
-        for i in tqdm(range(n_permutations), desc=f"Permuting {label}", leave=False, disable=quiet):
+        for i in progress_bar(range(n_permutations), desc=f"Permuting {label}", leave=False, disable=quiet):
 
             permuted_stats, permuted_indices = next(permutation_generator)
             permuted_stats = np.ravel(permuted_stats)

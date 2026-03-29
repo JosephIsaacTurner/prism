@@ -8,7 +8,7 @@ import numpy as np
 from typing import List, Optional, Union, Callable, Any, Generator
 from sklearn.utils import Bunch
 from nilearn.maskers import NiftiMasker
-from tqdm import tqdm
+from .utils import progress_bar
 import warnings
 
 
@@ -538,7 +538,7 @@ class _SpatialCorrelationAnalysis:
 
         # Permutation loop with progress bar
         permuted_stats_current = np.zeros((self.target_feature_shape, self.n_datasets))
-        for perm_idx in tqdm(
+        for perm_idx in progress_bar(
             range(self.n_permutations), desc="Permutations", unit="perm", leave=False, disable=self.quiet
         ):
             # Get stats for current permutation
